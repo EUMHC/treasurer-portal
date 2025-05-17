@@ -546,10 +546,10 @@ export const YearlySummary = () => {
                           dataKey="value"
                           activeShape={renderActiveShape as ActiveShape<PieSectorDataItem>}
                         >
-                          {incomePieData.map((entry, index) => (
-                            <Cell 
-                              key={`cell-${index}`} 
-                              fill={COLORS[index % COLORS.length]}
+                          {incomePieData.map((entry, _index) => (
+                            <Cell
+                              key={`cell-${entry.name}`}
+                              fill={COLORS[_index % COLORS.length]}
                             />
                           ))}
                         </Pie>
@@ -585,9 +585,9 @@ export const YearlySummary = () => {
                     </ResponsiveContainer>
                   </Box>
                   <VStack align="start" spacing={2} pl={4} flex="1">
-                    {incomePieData.map((entry, index) => (
+                    {incomePieData.map((entry, _index) => (
                       <HStack key={entry.name} spacing={2}>
-                        <Box w="3" h="3" borderRadius="full" bg={COLORS[index % COLORS.length]} />
+                        <Box w="3" h="3" borderRadius="full" bg={COLORS[_index % COLORS.length]} />
                         <Text fontSize="sm" color="gray.700">
                           {entry.name} ({((entry.value / summary.yearTotals.totalIncome) * 100).toFixed(1)}%)
                         </Text>
@@ -617,10 +617,10 @@ export const YearlySummary = () => {
                           dataKey="value"
                           activeShape={renderActiveShape as ActiveShape<PieSectorDataItem>}
                         >
-                          {expensesPieData.map((entry, index) => (
-                            <Cell 
-                              key={`cell-${index}`} 
-                              fill={COLORS[index % COLORS.length]}
+                          {expensesPieData.map((entry, _index) => (
+                            <Cell
+                              key={`cell-${entry.name}`}
+                              fill={COLORS[_index % COLORS.length]}
                             />
                           ))}
                         </Pie>
@@ -656,9 +656,9 @@ export const YearlySummary = () => {
                     </ResponsiveContainer>
                   </Box>
                   <VStack align="start" spacing={2} pl={4} flex="1">
-                    {expensesPieData.map((entry, index) => (
+                    {expensesPieData.map((entry, _index) => (
                       <HStack key={entry.name} spacing={2}>
-                        <Box w="3" h="3" borderRadius="full" bg={COLORS[index % COLORS.length]} />
+                        <Box w="3" h="3" borderRadius="full" bg={COLORS[_index % COLORS.length]} />
                         <Text fontSize="sm" color="gray.700">
                           {entry.name} ({((entry.value / summary.yearTotals.totalExpenses) * 100).toFixed(1)}%)
                         </Text>

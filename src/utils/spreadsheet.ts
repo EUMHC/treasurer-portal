@@ -653,9 +653,9 @@ const createYearlySummary = async (workbook: ExcelJS.Workbook, processedData: Mo
 
   // Add headers for expenses
   const expenseHeaderRow = worksheet.getRow(currentRow);
-  worksheet.columns.forEach((col, index) => {
+  (worksheet.columns as Partial<ExcelJS.Column>[]).forEach((col, index) => {
     const cell = expenseHeaderRow.getCell(index + 1);
-    cell.value = col.header as string;
+    cell.value = String(col.header || '');
     cell.font = { bold: true };
     cell.fill = {
       type: 'pattern',
@@ -931,7 +931,7 @@ const createBudgetSummary = async (workbook: ExcelJS.Workbook, processedData: Mo
     const headerRow = worksheet.getRow(currentRow);
     worksheet.columns.forEach((col, index) => {
       const cell = headerRow.getCell(index + 1);
-      cell.value = col.header;
+      cell.value = String(col.header || '');
       cell.font = { bold: true };
       cell.fill = {
         type: 'pattern',
@@ -1092,8 +1092,13 @@ export const exportToSpreadsheet = async () => {
 
     // Sort months in academic year order (Aug-Jul)
     const sortedMonths = Array.from(monthlyData.keys()).sort((a, b) => {
-      const [yearA, monthA] = a.split('-').map(Number);
-      const [yearB, monthB] = b.split('-').map(Number);
+      const [yearAStr = '', monthAStr = ''] = a.split('-');
+      const [yearBStr = '', monthBStr = ''] = b.split('-');
+      
+      const yearA = parseInt(yearAStr) || 0;
+      const yearB = parseInt(yearBStr) || 0;
+      const monthA = parseInt(monthAStr) || 0;
+      const monthB = parseInt(monthBStr) || 0;
       
       // Convert to academic year format (Aug = 1, Jul = 12)
       const academicMonthA = monthA >= 8 ? monthA - 7 : monthA + 5;
@@ -1108,24 +1113,23 @@ export const exportToSpreadsheet = async () => {
     // Handle first month
     if (sortedMonths.length > 0) {
       const firstMonthKey = sortedMonths[0];
-      const firstMonth = monthlyData.get(firstMonthKey)!;
-      const firstTransaction = firstMonth.transactions[0];
-      
-      // Set opening balance from first transaction
-      firstMonth.openingBalance = firstTransaction.balance - (firstTransaction.creditAmount || 0) + (firstTransaction.debitAmount || 0);
-      
-      // Calculate net movement
-      const netMovement = firstMonth.transactions.reduce((sum, t) => {
-        return sum + (t.creditAmount || 0) - (t.debitAmount || 0);
-      }, 0);
-      
-      // Calculate closing balance
-      firstMonth.closingBalance = firstMonth.openingBalance + netMovement;
-      
-      console.log(`Month: ${firstMonthKey}`,
-                  `\nOpening: ${firstMonth.openingBalance.toFixed(2)}`,
-                  `\nNet Movement: ${netMovement.toFixed(2)}`,
-                  `\nClosing: ${firstMonth.closingBalance.toFixed(2)}`);
+      if (firstMonthKey) {
+        const firstMonth = monthlyData.get(firstMonthKey)!;
+        const firstTransaction = firstMonth.transactions[0];
+        
+        if (firstTransaction) {
+          // Set opening balance from first transaction
+          firstMonth.openingBalance = firstTransaction.balance - (firstTransaction.creditAmount || 0) + (firstTransaction.debitAmount || 0);
+          
+          // Calculate net movement
+          const netMovement = firstMonth.transactions.reduce((sum, t) => {
+            return sum + (t.creditAmount || 0) - (t.debitAmount || 0);
+          }, 0);
+          
+          // Calculate closing balance
+          firstMonth.closingBalance = firstMonth.openingBalance + netMovement;
+        }
+      }
     }
 
     // Process remaining months
@@ -1133,24 +1137,21 @@ export const exportToSpreadsheet = async () => {
       const currentMonthKey = sortedMonths[i];
       const previousMonthKey = sortedMonths[i - 1];
       
-      const currentMonth = monthlyData.get(currentMonthKey)!;
-      const previousMonth = monthlyData.get(previousMonthKey)!;
-      
-      // Opening balance is previous month's closing balance
-      currentMonth.openingBalance = previousMonth.closingBalance;
-      
-      // Calculate net movement
-      const netMovement = currentMonth.transactions.reduce((sum, t) => {
-        return sum + (t.creditAmount || 0) - (t.debitAmount || 0);
-      }, 0);
-      
-      // Calculate closing balance
-      currentMonth.closingBalance = currentMonth.openingBalance + netMovement;
-      
-      console.log(`Month: ${currentMonthKey}`,
-                  `\nOpening: ${currentMonth.openingBalance.toFixed(2)}`,
-                  `\nNet Movement: ${netMovement.toFixed(2)}`,
-                  `\nClosing: ${currentMonth.closingBalance.toFixed(2)}`);
+      if (currentMonthKey && previousMonthKey) {
+        const currentMonth = monthlyData.get(currentMonthKey)!;
+        const previousMonth = monthlyData.get(previousMonthKey)!;
+        
+        // Opening balance is previous month's closing balance
+        currentMonth.openingBalance = previousMonth.closingBalance;
+        
+        // Calculate net movement
+        const netMovement = currentMonth.transactions.reduce((sum, t) => {
+          return sum + (t.creditAmount || 0) - (t.debitAmount || 0);
+        }, 0);
+        
+        // Calculate closing balance
+        currentMonth.closingBalance = currentMonth.openingBalance + netMovement;
+      }
     }
 
     // Group transactions for spreadsheet creation
