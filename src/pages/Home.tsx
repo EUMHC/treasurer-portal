@@ -44,7 +44,7 @@ export const Home = () => {
         borderColor="green.600"
       >
         <Image 
-          src="/logo.png" 
+          src="/treasurer-portal/logo.png" 
           alt="EUMHC Logo" 
           boxSize="150px"
           fallback={

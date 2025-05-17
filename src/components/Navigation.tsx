@@ -67,7 +67,7 @@ export const Navigation = () => {
           <Flex py={4} align="center" justify="space-between" gap={8}>
             {/* Left section - Logo */}
             <Flex align="center" gap={4}>
-              <img src="/logo.png" alt="EUMHC Logo" style={{ height: '32px' }} />
+              <img src="/treasurer-portal/logo.png" alt="EUMHC Logo" style={{ height: '32px' }} />
               <Text 
                 fontSize="lg" 
                 fontWeight="bold" 
