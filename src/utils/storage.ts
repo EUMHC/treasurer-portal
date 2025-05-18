@@ -1,4 +1,5 @@
 import type { Transaction, Category } from '../types/transaction';
+import { getAllDefaultCategories } from './categories';
 
 const STORAGE_KEYS = {
   TRANSACTIONS: 'transactions',
@@ -21,28 +22,16 @@ export const saveCategories = (categories: Category[]): void => {
 
 export const getCategories = (): Category[] => {
   const stored = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-  return stored ? JSON.parse(stored) : getDefaultCategories();
+  return stored ? JSON.parse(stored) : getAllDefaultCategories();
 };
 
-export const saveStartingBalance = (balance: number) => {
+export const saveStartingBalance = (balance: number): void => {
   localStorage.setItem(STORAGE_KEYS.STARTING_BALANCE, balance.toString());
 };
 
 export const getStartingBalance = (): number => {
   const stored = localStorage.getItem(STORAGE_KEYS.STARTING_BALANCE);
   return stored ? parseFloat(stored) : 0;
-};
-
-export const getDefaultCategories = (): Category[] => {
-  return [
-    { id: 'membership', name: 'Membership', color: '#2ECC71', type: 'INCOME' },
-    { id: 'sponsorship', name: 'Sponsorship', color: '#3498DB', type: 'INCOME' },
-    { id: 'equipment', name: 'Equipment', color: '#E74C3C', type: 'EXPENSE' },
-    { id: 'travel', name: 'Travel', color: '#F39C12', type: 'EXPENSE' },
-    { id: 'venue', name: 'Venue Hire', color: '#9B59B6', type: 'EXPENSE' },
-    { id: 'social', name: 'Social Events', color: '#1ABC9C', type: 'EXPENSE' },
-    { id: 'other', name: 'Other', color: '#95A5A6', type: 'EXPENSE' },
-  ];
 };
 
 // Budget storage functions

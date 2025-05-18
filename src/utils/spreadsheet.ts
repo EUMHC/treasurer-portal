@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import type { Transaction, Category } from '../types/transaction';
 import { getTransactions, getCategories, getBudgetedAmounts } from './storage';
 import { createStandaloneToast } from '@chakra-ui/react';
+import { parseDescription } from './parseDescription';
 
 const { toast } = createStandaloneToast();
 
@@ -46,49 +47,6 @@ const formatMonthYear = (key: string): string => {
   });
 };
 
-// Helper function to parse transaction description
-const parseDescription = (description: string): { name: string; reference: string } => {
-  if (!description) {
-    return { name: '', reference: '' };
-  }
-
-  const patterns = [
-    // Pattern for reference numbers and technical details at end
-    { regex: /^(.+?)(?:\s+\d{12,}|\s+[A-Z0-9]+\s+\d{6}\s+\d{2}\s+\d{2}[A-Z]{3}\d{2}\s+\d{2}:\d{2})\s*(.*)$/i },
-    // Pattern for simple reference after name
-    { regex: /^(.+?)\s+((?:INTRAMURAL\s*MEMB|TECHNICAL\s*KIT|EUSU\s*MSL\s*INCOME).*)$/i },
-    // Pattern for PlayerData
-    { regex: /^PLYRDATA\s+(.+)$/, name: "Playerdata", refGroup: 1 },
-    // Pattern for 1&1
-    { regex: /^(1&1\s+INTERNET\s+LTD)[.\s]*(.+)?$/i },
-    // Pattern for Edinburgh University
-    { regex: /^(EDIN(?:BURGH)?\s+UNIVERSI(?:TY)?)\s*(.+)?$/i },
-  ];
-
-  for (const pattern of patterns) {
-    const match = description.match(pattern.regex);
-    if (match) {
-      if (pattern.name === "Playerdata" && match[pattern.refGroup]) {
-        return {
-          name: pattern.name,
-          reference: match[pattern.refGroup] as string
-        };
-      }
-      if (match[1]) {
-        return {
-          name: match[1].trim(),
-          reference: (match[2] || '').trim()
-        };
-      }
-    }
-  }
-
-  return {
-    name: description.trim(),
-    reference: ''
-  };
-};
-
 const createMonthlySheet = async (
   workbook: ExcelJS.Workbook,
   monthKey: string,
@@ -100,20 +58,17 @@ const createMonthlySheet = async (
 
   // Set column widths
   worksheet.columns = [
-    { width: 5 }, // Left margin
-    { header: 'Date', key: 'date', width: 15 },
-    { header: 'Name', key: 'name', width: 40 },
-    { header: 'Reference', key: 'reference', width: 45 },
-    { header: 'Amount', key: 'amount', width: 15 },
+    { header: 'Date', key: 'date', width: 12 },
+    { header: 'Name', key: 'name', width: 35 },
+    { header: 'Reference', key: 'reference', width: 40 },
+    { header: 'Amount', key: 'amount', width: 12 },
     { header: 'Category', key: 'category', width: 20 },
     { header: 'Running Balance', key: 'balance', width: 15 },
-    { header: 'Notes', key: 'notes', width: 30 },
-    { width: 5 } // Right margin
+    { header: 'Notes', key: 'notes', width: 25 }
   ];
 
   // Add title and logo
-  worksheet.getRow(1).height = 30;
-  worksheet.mergeCells('A1:I1');
+  worksheet.mergeCells('A1:G1');
   const titleCell = worksheet.getCell('A1');
   titleCell.value = 'EUMHC';
   titleCell.font = { size: 20, bold: true, color: { argb: 'FFFFFF' } };
@@ -125,8 +80,7 @@ const createMonthlySheet = async (
   titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
 
   // Add subtitle
-  worksheet.getRow(2).height = 25;
-  worksheet.mergeCells('A2:I2');
+  worksheet.mergeCells('A2:G2');
   const subtitleCell = worksheet.getCell('A2');
   subtitleCell.value = `Financial Summary for ${monthName}`;
   subtitleCell.font = { size: 14, bold: true };
@@ -136,9 +90,6 @@ const createMonthlySheet = async (
     fgColor: { argb: 'F0F0F0' }
   };
   subtitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
-
-  // Add spacing
-  worksheet.getRow(3).height = 10;
 
   // Calculate opening balance based on month position
   const allTransactions = getTransactions().sort((a, b) => {
@@ -230,7 +181,6 @@ const createMonthlySheet = async (
 
   summaryData.forEach((item, index) => {
     const rowNum = summaryStartRow + index;
-    worksheet.getRow(rowNum).height = 20;
 
     // Unmerge any existing merged cells in this row
     worksheet.unMergeCells(`C${rowNum}:F${rowNum}`);
@@ -273,9 +223,6 @@ const createMonthlySheet = async (
     }
   });
 
-  // Add spacing after summary
-  worksheet.getRow(9).height = 10;
-
   // Split transactions
   const incomeTransactions = transactions.filter(t => t.creditAmount);
   const expenditureTransactions = transactions.filter(t => t.debitAmount);
@@ -285,8 +232,8 @@ const createMonthlySheet = async (
   // Income Section
   if (incomeTransactions.length > 0) {
     // Section header
-    worksheet.mergeCells(`B${currentRow}:H${currentRow}`);
-    const incomeHeader = worksheet.getCell(`B${currentRow}`);
+    worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
+    const incomeHeader = worksheet.getCell(`A${currentRow}`);
     incomeHeader.value = 'INCOME TRANSACTIONS';
     incomeHeader.font = { bold: true, color: { argb: 'FFFFFF' }, size: 12 };
     incomeHeader.fill = {
@@ -295,13 +242,12 @@ const createMonthlySheet = async (
       fgColor: { argb: TABLE_HEADER_GREEN }
     };
     incomeHeader.alignment = { horizontal: 'center', vertical: 'middle' };
-    worksheet.getRow(currentRow).height = 25;
     currentRow++;
 
     // Table headers
     const headerRow = worksheet.getRow(currentRow);
     ['Date', 'Name', 'Reference', 'Amount', 'Category', 'Running Balance', 'Notes'].forEach((header, index) => {
-      const cell = headerRow.getCell(index + 2);
+      const cell = headerRow.getCell(index + 1);
       cell.value = header;
       cell.font = { bold: true, size: 11 };
       cell.fill = {
@@ -317,7 +263,6 @@ const createMonthlySheet = async (
         right: { style: 'thin', color: { argb: BORDER_COLOR } }
       };
     });
-    worksheet.getRow(currentRow).height = 20;
     currentRow++;
 
     // Add income transactions
@@ -325,22 +270,21 @@ const createMonthlySheet = async (
       const { name, reference } = parseDescription(transaction.transactionDescription || '');
       const row = worksheet.getRow(currentRow);
       
-      // Add data with offset for margin
-      row.getCell(2).value = transaction.transactionDate;
-      row.getCell(3).value = name;
-      row.getCell(4).value = reference;
-      row.getCell(5).value = transaction.creditAmount || 0;
-      row.getCell(5).numFmt = '"£"#,##0.00';
-      row.getCell(5).font = { color: { argb: '2E7D32' } };
-      row.getCell(6).value = categories.find(c => c.id === transaction.category)?.name || 'Unselected';
-      row.getCell(7).value = transaction.balance;
-      row.getCell(7).numFmt = '"£"#,##0.00';
-      row.getCell(8).value = '';
+      // Add data starting from column A
+      row.getCell(1).value = transaction.transactionDate;
+      row.getCell(2).value = name;
+      row.getCell(3).value = reference;
+      row.getCell(4).value = transaction.creditAmount || 0;
+      row.getCell(4).numFmt = '"£"#,##0.00';
+      row.getCell(4).font = { color: { argb: '2E7D32' } };
+      row.getCell(5).value = categories.find(c => c.id === transaction.category)?.name || 'Unselected';
+      row.getCell(6).value = transaction.balance;
+      row.getCell(6).numFmt = '"£"#,##0.00';
+      row.getCell(7).value = '';
 
       // Style the row
-      row.height = 20;
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        if (colNumber >= 2 && colNumber <= 8) {
+        if (colNumber >= 1 && colNumber <= 7) {
           cell.border = {
             bottom: { style: 'thin', color: { argb: BORDER_COLOR } },
             left: { style: 'thin', color: { argb: BORDER_COLOR } },
@@ -359,8 +303,8 @@ const createMonthlySheet = async (
   // Expenses Section
   if (expenditureTransactions.length > 0) {
     // Section header
-    worksheet.mergeCells(`B${currentRow}:H${currentRow}`);
-    const expenseHeader = worksheet.getCell(`B${currentRow}`);
+    worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
+    const expenseHeader = worksheet.getCell(`A${currentRow}`);
     expenseHeader.value = 'EXPENSE TRANSACTIONS';
     expenseHeader.font = { bold: true, color: { argb: 'FFFFFF' }, size: 12 };
     expenseHeader.fill = {
@@ -369,13 +313,12 @@ const createMonthlySheet = async (
       fgColor: { argb: TABLE_HEADER_GREEN }
     };
     expenseHeader.alignment = { horizontal: 'center', vertical: 'middle' };
-    worksheet.getRow(currentRow).height = 25;
     currentRow++;
 
     // Table headers
     const headerRow = worksheet.getRow(currentRow);
     ['Date', 'Name', 'Reference', 'Amount', 'Category', 'Running Balance', 'Notes'].forEach((header, index) => {
-      const cell = headerRow.getCell(index + 2);
+      const cell = headerRow.getCell(index + 1);
       cell.value = header;
       cell.font = { bold: true, size: 11 };
       cell.fill = {
@@ -391,7 +334,6 @@ const createMonthlySheet = async (
         right: { style: 'thin', color: { argb: BORDER_COLOR } }
       };
     });
-    worksheet.getRow(currentRow).height = 20;
     currentRow++;
 
     // Add expense transactions
@@ -399,22 +341,21 @@ const createMonthlySheet = async (
       const { name, reference } = parseDescription(transaction.transactionDescription || '');
       const row = worksheet.getRow(currentRow);
       
-      // Add data with offset for margin
-      row.getCell(2).value = transaction.transactionDate;
-      row.getCell(3).value = name;
-      row.getCell(4).value = reference;
-      row.getCell(5).value = transaction.debitAmount || 0;
-      row.getCell(5).numFmt = '"£"#,##0.00';
-      row.getCell(5).font = { color: { argb: 'D32F2F' } };
-      row.getCell(6).value = categories.find(c => c.id === transaction.category)?.name || 'Unselected';
-      row.getCell(7).value = transaction.balance;
-      row.getCell(7).numFmt = '"£"#,##0.00';
-      row.getCell(8).value = '';
+      // Add data starting from column A
+      row.getCell(1).value = transaction.transactionDate;
+      row.getCell(2).value = name;
+      row.getCell(3).value = reference;
+      row.getCell(4).value = transaction.debitAmount || 0;
+      row.getCell(4).numFmt = '"£"#,##0.00';
+      row.getCell(4).font = { color: { argb: 'D32F2F' } };
+      row.getCell(5).value = categories.find(c => c.id === transaction.category)?.name || 'Unselected';
+      row.getCell(6).value = transaction.balance;
+      row.getCell(6).numFmt = '"£"#,##0.00';
+      row.getCell(7).value = '';
 
       // Style the row
-      row.height = 20;
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        if (colNumber >= 2 && colNumber <= 8) {
+        if (colNumber >= 1 && colNumber <= 7) {
           cell.border = {
             bottom: { style: 'thin', color: { argb: BORDER_COLOR } },
             left: { style: 'thin', color: { argb: BORDER_COLOR } },
@@ -427,10 +368,6 @@ const createMonthlySheet = async (
       currentRow++;
     });
   }
-
-  // Add margins to the sheet
-  worksheet.getColumn(1).width = 10; // Left margin
-  worksheet.getColumn(10).width = 10; // Right margin
 };
 
 const createYearlySummary = async (workbook: ExcelJS.Workbook, processedData: MonthlyTransactions) => {

@@ -13,17 +13,29 @@ import {
   AlertDialogContent,
   AlertDialogOverlay,
   useDisclosure,
+  useToast,
 } from '@chakra-ui/react';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
-import { FiLogOut, FiDownload } from 'react-icons/fi';
+import { FiLogOut, FiDownload, FiTrash2 } from 'react-icons/fi';
 import { useRef, type RefObject } from 'react';
 import type { FocusableElement } from '@chakra-ui/utils';
+import { clearMappings } from '../utils/transactionMappings';
 
 export const Navigation = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { 
+    isOpen: isExitOpen, 
+    onOpen: onExitOpen, 
+    onClose: onExitClose 
+  } = useDisclosure();
+  const {
+    isOpen: isClearOpen,
+    onOpen: onClearOpen,
+    onClose: onClearClose
+  } = useDisclosure();
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const toast = useToast();
 
   const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => {
     const isActive = location.pathname === to;
@@ -49,7 +61,25 @@ export const Navigation = () => {
   };
 
   const handleExit = () => {
-    navigate('/');
+    navigate('/treasurer-portal');
+  };
+
+  const handleClearCache = () => {
+    // Clear all localStorage data
+    localStorage.clear();
+    clearMappings();
+    onClearClose();
+    
+    toast({
+      title: "Cache Cleared",
+      description: "All stored mappings, categories, and settings have been cleared.",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
+
+    // Reload the page to reflect cleared data
+    window.location.reload();
   };
 
   return (
@@ -80,17 +110,17 @@ export const Navigation = () => {
 
             {/* Center section - Navigation */}
             <Flex gap={8} justify="center" flex={1}>
-              <NavLink to="/transactions">Transactions</NavLink>
-              <NavLink to="/yearly-summary">Yearly Summary</NavLink>
-              <NavLink to="/budget-summary">Budget Summary</NavLink>
+              <NavLink to="/treasurer-portal/transactions">Transactions</NavLink>
+              <NavLink to="/treasurer-portal/yearly-summary">Yearly Summary</NavLink>
+              <NavLink to="/treasurer-portal/budget-summary">Budget Summary</NavLink>
             </Flex>
 
-            {/* Right section - Exit */}
+            {/* Right section - Actions */}
             <Flex align="center" minW="fit-content">
               <ButtonGroup spacing={3}>
                 <Button
                   leftIcon={<FiDownload />}
-                  onClick={() => window.exportToSpreadsheet?.()}
+                  onClick={() => window.exportHandler?.openExportModal()}
                   colorScheme="green"
                   variant="solid"
                   size="md"
@@ -100,6 +130,18 @@ export const Navigation = () => {
                   Export
                 </Button>
                 <Button
+                  leftIcon={<FiTrash2 />}
+                  colorScheme="red"
+                  variant="outline"
+                  size="md"
+                  color="red.200"
+                  borderColor="red.200"
+                  _hover={{ bg: 'red.900' }}
+                  onClick={onClearOpen}
+                >
+                  Clear Cache
+                </Button>
+                <Button
                   leftIcon={<FiLogOut />}
                   colorScheme="green"
                   variant="outline"
@@ -107,7 +149,7 @@ export const Navigation = () => {
                   color="white"
                   borderColor="green.600"
                   _hover={{ bg: 'green.700' }}
-                  onClick={onOpen}
+                  onClick={onExitOpen}
                 >
                   Exit
                 </Button>
@@ -117,10 +159,11 @@ export const Navigation = () => {
         </Container>
       </Box>
 
+      {/* Exit Confirmation Dialog */}
       <AlertDialog
-        isOpen={isOpen}
+        isOpen={isExitOpen}
         leastDestructiveRef={cancelRef as RefObject<FocusableElement>}
-        onClose={onClose}
+        onClose={onExitClose}
       >
         <AlertDialogOverlay>
           <AlertDialogContent>
@@ -133,17 +176,59 @@ export const Navigation = () => {
             </AlertDialogBody>
 
             <AlertDialogFooter gap={3}>
-              <Button ref={cancelRef} onClick={onClose}>
+              <Button ref={cancelRef} onClick={onExitClose}>
                 Cancel
               </Button>
               <Button 
                 colorScheme="red" 
                 onClick={() => {
-                  onClose();
+                  onExitClose();
                   handleExit();
                 }}
               >
                 Exit
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      {/* Clear Cache Confirmation Dialog */}
+      <AlertDialog
+        isOpen={isClearOpen}
+        leastDestructiveRef={cancelRef as RefObject<FocusableElement>}
+        onClose={onClearClose}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold" bg="red.700" color="white" borderTopRadius="md">
+              Clear Cache
+            </AlertDialogHeader>
+
+            <AlertDialogBody pt={4}>
+              <Text mb={4}>
+                This will clear all stored data, including:
+              </Text>
+              <Text as="ul" pl={4}>
+                <Text as="li">• All transaction name/reference customizations</Text>
+                <Text as="li">• All category assignments</Text>
+                <Text as="li">• All custom categories</Text>
+                <Text as="li">• All other settings</Text>
+              </Text>
+              <Text mt={4} fontWeight="bold" color="red.600">
+                This action cannot be undone.
+              </Text>
+            </AlertDialogBody>
+
+            <AlertDialogFooter gap={3}>
+              <Button ref={cancelRef} onClick={onClearClose}>
+                Cancel
+              </Button>
+              <Button 
+                colorScheme="red" 
+                onClick={handleClearCache}
+              >
+                Clear Cache
               </Button>
             </AlertDialogFooter>
           </AlertDialogContent>

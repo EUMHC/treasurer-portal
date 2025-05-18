@@ -38,7 +38,7 @@ const theme = extendTheme({
 
 const AppContent = () => {
   const location = useLocation();
-  const isHome = location.pathname === '/';
+  const isHome = location.pathname === '/treasurer-portal' || location.pathname === '/treasurer-portal/';
 
   useEffect(() => {
     window.exportToSpreadsheet = exportToSpreadsheet;
@@ -52,14 +52,14 @@ const AppContent = () => {
     <>
       {isHome ? (
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/treasurer-portal" element={<Home />} />
         </Routes>
       ) : (
         <Routes>
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/yearly-summary" element={<YearlySummary />} />
-          <Route path="/budget-summary" element={<BudgetSummary />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/treasurer-portal/transactions" element={<Transactions />} />
+          <Route path="/treasurer-portal/yearly-summary" element={<YearlySummary />} />
+          <Route path="/treasurer-portal/budget-summary" element={<BudgetSummary />} />
+          <Route path="*" element={<Navigate to="/treasurer-portal" replace />} />
         </Routes>
       )}
     </>

@@ -35,15 +35,25 @@ import {
   TabPanel,
   Tab,
   Input,
-  IconButton
+  IconButton,
+  Editable,
+  EditableInput,
+  EditablePreview,
+  Tooltip,
+  Radio,
+  RadioGroup,
+  ModalFooter
 } from '@chakra-ui/react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Transaction, Category, CategoryType } from '../types/transaction';
+import { useNavigate } from 'react-router-dom';
+import type { Transaction, Category, CategoryType, Budget } from '../types/transaction';
 import { getTransactions, getCategories, saveTransactions, saveCategories } from '../utils/storage';
 import { Navigation } from '../components/Navigation';
-import { FiZap, FiSettings, FiTrash2 } from 'react-icons/fi';
+import { FiZap, FiSettings, FiTrash2, FiAlertCircle, FiFileText, FiDownload } from 'react-icons/fi';
 import { FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import { ensureDefaultCategories } from '../utils/categories';
+import { parseDescription } from '../utils/parseDescription';
+import { saveMapping, applyStoredMappings } from '../utils/transactionMappings';
 
 type GroupedTransactions = {
   [key: string]: Transaction[];
@@ -55,57 +65,41 @@ const parseUKDate = (dateStr: string): Date => {
   return new Date(year, month - 1, day);
 };
 
-// Add description parsing function
-const parseDescription = (description: string): { name: string; reference: string } => {
-  if (!description) {
-    return { name: '', reference: '' };
+// Add window interface
+declare global {
+  interface Window {
+    exportHandler?: ExportHandler;
+    exportToSpreadsheet?: () => void;
   }
+}
 
-  const patterns = [
-    // Pattern for reference numbers and technical details at end
-    { regex: /^(.+?)(?:\s+\d{12,}|\s+[A-Z0-9]+\s+\d{6}\s+\d{2}\s+\d{2}[A-Z]{3}\d{2}\s+\d{2}:\d{2})\s*(.*)$/i },
-    // Pattern for simple reference after name
-    { regex: /^(.+?)\s+((?:INTRAMURAL\s*MEMB|TECHNICAL\s*KIT|EUSU\s*MSL\s*INCOME).*)$/i },
-    // Pattern for PlayerData
-    { regex: /^PLYRDATA\s+(.+)$/, name: "Playerdata", refGroup: 1 },
-    // Pattern for 1&1
-    { regex: /^(1&1\s+INTERNET\s+LTD)[.\s]*(.+)?$/i },
-    // Pattern for Edinburgh University
-    { regex: /^(EDIN(?:BURGH)?\s+UNIVERSI(?:TY)?)\s*(.+)?$/i },
-  ];
-
-  for (const pattern of patterns) {
-    const match = description.match(pattern.regex);
-    if (match) {
-      if (pattern.name === "Playerdata" && match[pattern.refGroup]) {
-        return {
-          name: pattern.name,
-          reference: match[pattern.refGroup] as string
-        };
-      }
-      if (match[1]) {
-        return {
-          name: match[1].trim(),
-          reference: (match[2] || '').trim()
-        };
-      }
-    }
-  }
-
-  return {
-    name: description.trim(),
-    reference: ''
-  };
+// Add type for the export function
+export type ExportHandler = {
+  openExportModal: () => void;
+  handleExport: (format: 'spreadsheet' | 'backup') => void;
 };
 
 export const Transactions = () => {
+  const navigate = useNavigate();
   const [, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransactions>({});
   const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryType, setNewCategoryType] = useState<CategoryType>('EXPENSE');
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { 
+    isOpen: isCategoryModalOpen, 
+    onOpen: onCategoryModalOpen, 
+    onClose: onCategoryModalClose 
+  } = useDisclosure();
+  
+  const {
+    isOpen: isExportModalOpen,
+    onOpen: onExportModalOpen,
+    onClose: onExportModalClose
+  } = useDisclosure();
+
+  const [exportFormat, setExportFormat] = useState<'spreadsheet' | 'backup'>('spreadsheet');
   const toast = useToast();
 
   // Calculate categorization statistics
@@ -133,7 +127,10 @@ export const Transactions = () => {
   const loadData = useCallback(() => {
     const loadedTransactions = getTransactions();
     const loadedCategories = getCategories();
-    setTransactions(loadedTransactions);
+    
+    // Apply any stored mappings to the transactions
+    const mappedTransactions = applyStoredMappings(loadedTransactions);
+    setTransactions(mappedTransactions);
     
     // Ensure default categories are present
     const categoriesWithDefaults = ensureDefaultCategories(loadedCategories as Category[]);
@@ -141,7 +138,7 @@ export const Transactions = () => {
     saveCategories(categoriesWithDefaults);
 
     // Group transactions by month and year
-    const grouped = loadedTransactions.reduce((acc: GroupedTransactions, transaction) => {
+    const grouped = mappedTransactions.reduce((acc: GroupedTransactions, transaction) => {
       const date = parseUKDate(transaction.transactionDate);
       if (isNaN(date.getTime())) return acc;
       
@@ -177,24 +174,85 @@ export const Transactions = () => {
   }, []);
 
   useEffect(() => {
+    const loadedTransactions = getTransactions();
+    if (!loadedTransactions || loadedTransactions.length === 0) {
+      navigate('/treasurer-portal');
+      return;
+    }
     loadData();
-  }, [loadData]);
+  }, [loadData, navigate]);
+
+  // Expose the export functionality to the window object
+  useEffect(() => {
+    const exportHandler: ExportHandler = {
+      openExportModal: onExportModalOpen,
+      handleExport: (format) => {
+        setExportFormat(format);
+        if (format === 'spreadsheet') {
+          window.exportToSpreadsheet?.();
+        } else {
+          // Create backup format
+          const allBudgets = categories.reduce((acc, category) => {
+            if (category.budgetedValues) {
+              acc.push(...category.budgetedValues);
+            }
+            return acc;
+          }, [] as Budget[]);
+
+          const backup = {
+            transactions: Object.values(groupedTransactions).flat(),
+            categories: categories,
+            budgets: allBudgets,
+            version: '1.0'
+          };
+          
+          // Create and download the file
+          const dataStr = JSON.stringify(backup, null, 2);
+          const dataBlob = new Blob([dataStr], { type: 'application/json' });
+          const url = URL.createObjectURL(dataBlob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `treasurer-backup-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+      }
+    };
+
+    window.exportHandler = exportHandler;
+    return () => {
+      delete window.exportHandler;
+    };
+  }, [groupedTransactions, categories, onExportModalOpen]);
 
   const handleCategoryChange = (monthKey: string, transactionIndex: number, categoryId: string) => {
     const updatedGrouped = { ...groupedTransactions };
     const monthTransactions = [...(updatedGrouped[monthKey] || [])];
     
     if (monthTransactions[transactionIndex]) {
+      const transaction = monthTransactions[transactionIndex];
+      const { name, reference } = parseDescription({ 
+        description: transaction.transactionDescription, 
+        type: transaction.transactionType 
+      });
+
+      // Save the mapping
+      saveMapping(
+        transaction.transactionDescription,
+        name,
+        reference,
+        categoryId
+      );
+
       monthTransactions[transactionIndex] = {
-        ...monthTransactions[transactionIndex],
+        ...transaction,
         category: categoryId
       };
       updatedGrouped[monthKey] = monthTransactions;
       
-      // Update both states
       setGroupedTransactions(updatedGrouped);
-      
-      // Flatten all transactions for storage
       const allTransactions = Object.values(updatedGrouped).flat();
       setTransactions(allTransactions);
       saveTransactions(allTransactions);
@@ -241,8 +299,31 @@ export const Transactions = () => {
     try {
       const updatedGrouped = { ...groupedTransactions };
       let hasChanges = false;
+      const patternMappings: { [key: string]: string } = {};
 
-      // Process each transaction
+      // First pass: build pattern mappings from existing categorized transactions
+      for (const monthTransactions of Object.values(updatedGrouped)) {
+        if (!monthTransactions) continue;
+        
+        for (const transaction of monthTransactions) {
+          if (!transaction || !transaction.category) continue;
+
+          const { reference } = parseDescription({ 
+            description: transaction.transactionDescription, 
+            type: transaction.transactionType 
+          });
+
+          // Store reference-based patterns
+          if (reference) {
+            const refLower = reference.toLowerCase();
+            if (!patternMappings[refLower]) {
+              patternMappings[refLower] = transaction.category;
+            }
+          }
+        }
+      }
+
+      // Second pass: apply categorization
       for (const monthKey of Object.keys(updatedGrouped)) {
         const monthTransactions = updatedGrouped[monthKey];
         if (!monthTransactions) continue;
@@ -251,22 +332,50 @@ export const Transactions = () => {
           const transaction = monthTransactions[i];
           if (!transaction || transaction.category) continue;
 
-          const description = transaction.transactionDescription.toLowerCase();
+          const { reference } = parseDescription({ 
+            description: transaction.transactionDescription, 
+            type: transaction.transactionType 
+          });
+
           let matchedCategory = null;
 
-          // Filter categories based on transaction type before matching
-          const relevantCategories = categories.filter(category => 
-            transaction.creditAmount 
-              ? category.type === 'INCOME'
-              : category.type === 'EXPENSE'
-          );
+          // 1. Try to match based on reference patterns
+          if (reference) {
+            const refLower = reference.toLowerCase();
+            matchedCategory = patternMappings[refLower];
+          }
 
-          // Simple matching logic - can be enhanced with more sophisticated rules
-          for (const category of relevantCategories) {
-            const keywords = category.name.toLowerCase().split(' ');
-            if (keywords.some(keyword => description.includes(keyword))) {
-              matchedCategory = category.id;
-              break;
+          // 2. If no match, try category-specific rules
+          if (!matchedCategory) {
+            const description = transaction.transactionDescription.toLowerCase();
+            
+            // Filter categories based on transaction type
+            const relevantCategories = categories.filter(category => 
+              transaction.creditAmount 
+                ? category.type === 'INCOME'
+                : category.type === 'EXPENSE'
+            );
+
+            // Special case rules
+            if (description.includes('umpire') || description.includes('referee')) {
+              const matchCostsCategory = relevantCategories.find(c => c.name.toLowerCase().includes('match'));
+              if (matchCostsCategory) {
+                matchedCategory = matchCostsCategory.id;
+              }
+            }
+            // Add more special case rules here as needed
+
+            // 3. Fallback to keyword matching
+            if (!matchedCategory) {
+              for (const category of relevantCategories) {
+                const keywords = category.name.toLowerCase().split(' ');
+                if (keywords.some(keyword => 
+                  description.includes(keyword) && keyword.length > 3  // Only match keywords longer than 3 chars
+                )) {
+                  matchedCategory = category.id;
+                  break;
+                }
+              }
             }
           }
 
@@ -275,6 +384,19 @@ export const Transactions = () => {
               ...transaction,
               category: matchedCategory
             };
+            
+            // Save the mapping for future use
+            const { name, reference } = parseDescription({ 
+              description: transaction.transactionDescription, 
+              type: transaction.transactionType 
+            });
+            saveMapping(
+              transaction.transactionDescription,
+              name,
+              reference,
+              matchedCategory
+            );
+            
             hasChanges = true;
           }
         }
@@ -290,7 +412,7 @@ export const Transactions = () => {
         saveTransactions(allTransactions);
         toast({
           title: "Auto-categorization complete",
-          description: "Transactions have been automatically categorized based on their descriptions",
+          description: "Transactions have been automatically categorized based on patterns and existing mappings",
           status: "success",
           duration: 5000,
           isClosable: true,
@@ -360,6 +482,83 @@ export const Transactions = () => {
     });
   };
 
+  const handleNameChange = (monthKey: string, transactionIndex: number, newName: string) => {
+    const updatedGrouped = { ...groupedTransactions };
+    const monthTransactions = [...(updatedGrouped[monthKey] || [])];
+    
+    if (monthTransactions[transactionIndex]) {
+      const transaction = monthTransactions[transactionIndex];
+      const { reference } = parseDescription({ 
+        description: transaction.transactionDescription, 
+        type: transaction.transactionType 
+      });
+
+      // Save the mapping
+      saveMapping(
+        transaction.transactionDescription,
+        newName,
+        reference,
+        transaction.category
+      );
+
+      monthTransactions[transactionIndex] = {
+        ...transaction,
+        transactionDescription: transaction.transactionDescription.replace(
+          parseDescription({ 
+            description: transaction.transactionDescription, 
+            type: transaction.transactionType 
+          }).name,
+          newName
+        )
+      };
+      updatedGrouped[monthKey] = monthTransactions;
+      
+      setGroupedTransactions(updatedGrouped);
+      const allTransactions = Object.values(updatedGrouped).flat();
+      setTransactions(allTransactions);
+      saveTransactions(allTransactions);
+    }
+  };
+
+  const handleReferenceChange = (monthKey: string, transactionIndex: number, newReference: string) => {
+    const updatedGrouped = { ...groupedTransactions };
+    const monthTransactions = [...(updatedGrouped[monthKey] || [])];
+    
+    if (monthTransactions[transactionIndex]) {
+      const transaction = monthTransactions[transactionIndex];
+      const parsed = parseDescription({ 
+        description: transaction.transactionDescription, 
+        type: transaction.transactionType 
+      });
+      
+      // Save the mapping
+      saveMapping(
+        transaction.transactionDescription,
+        parsed.name,
+        newReference,
+        transaction.category
+      );
+
+      let newDescription = transaction.transactionDescription;
+      if (parsed.reference) {
+        newDescription = newDescription.replace(parsed.reference, newReference);
+      } else {
+        newDescription = `${parsed.name} ${newReference}${newDescription.substring(parsed.name.length)}`;
+      }
+
+      monthTransactions[transactionIndex] = {
+        ...transaction,
+        transactionDescription: newDescription
+      };
+      updatedGrouped[monthKey] = monthTransactions;
+      
+      setGroupedTransactions(updatedGrouped);
+      const allTransactions = Object.values(updatedGrouped).flat();
+      setTransactions(allTransactions);
+      saveTransactions(allTransactions);
+    }
+  };
+
   return (
     <>
       <Navigation />
@@ -403,7 +602,7 @@ export const Transactions = () => {
                     color="white"
                     borderColor="green.100"
                     _hover={{ bg: 'green.800' }}
-                    onClick={onOpen}
+                    onClick={onCategoryModalOpen}
                   />
                 </HStack>
               </Flex>
@@ -476,17 +675,20 @@ export const Transactions = () => {
                         <Thead>
                           <Tr>
                             <Th bg="green.50" py={4} color="gray.700" width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Date</Th>
-                            <Th bg="green.50" py={4} color="gray.700" width="20%" borderBottom="2px" borderColor="green.800" fontSize="sm">Name</Th>
-                            <Th bg="green.50" py={4} color="gray.700" width="20%" borderBottom="2px" borderColor="green.800" fontSize="sm">Reference</Th>
-                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="12%" borderBottom="2px" borderColor="green.800" fontSize="sm">Debit</Th>
-                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="12%" borderBottom="2px" borderColor="green.800" fontSize="sm">Credit</Th>
-                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="12%" borderBottom="2px" borderColor="green.800" fontSize="sm">Balance</Th>
-                            <Th bg="green.50" py={4} color="gray.700" width="20%" borderBottom="2px" borderColor="green.800" fontSize="sm">Category</Th>
+                            <Th bg="green.50" py={4} color="gray.700" width="18%" borderBottom="2px" borderColor="green.800" fontSize="sm">Name</Th>
+                            <Th bg="green.50" py={4} color="gray.700" width="18%" borderBottom="2px" borderColor="green.800" fontSize="sm">Reference</Th>
+                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Debit</Th>
+                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Credit</Th>
+                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Balance</Th>
+                            <Th bg="green.50" py={4} color="gray.700" width="24%" borderBottom="2px" borderColor="green.800" fontSize="sm">Category</Th>
                           </Tr>
                         </Thead>
                         <Tbody>
                           {transactions.map((transaction, index) => {
-                            const { name, reference } = parseDescription(transaction.transactionDescription);
+                            const { name, reference } = parseDescription({ 
+                              description: transaction.transactionDescription, 
+                              type: transaction.transactionType 
+                            });
                             return (
                               <Tr 
                                 key={`${transaction.transactionDate}-${index}`}
@@ -494,13 +696,42 @@ export const Transactions = () => {
                                 transition="all 0.2s"
                                 borderBottomWidth="1px"
                                 borderColor="gray.200"
+                                bg={!transaction.category ? 'orange.50' : undefined}
                               >
                                 <Td py={3.5} color="gray.700" fontWeight="medium">{formatDate(transaction.transactionDate)}</Td>
-                                <Td py={3.5} color="gray.700" maxW="0" isTruncated title={name}>
-                                  {name}
+                                <Td py={3.5}>
+                                  <Tooltip label="Click to edit name">
+                                    <Editable
+                                      defaultValue={name}
+                                      onSubmit={(newName) => handleNameChange(monthKey, index, newName)}
+                                      color="gray.700"
+                                    >
+                                      <EditablePreview 
+                                        _hover={{ bg: 'gray.100' }} 
+                                        px={2} 
+                                        maxW="100%" 
+                                        isTruncated
+                                      />
+                                      <EditableInput px={2} />
+                                    </Editable>
+                                  </Tooltip>
                                 </Td>
-                                <Td py={3.5} color="gray.500" maxW="0" isTruncated title={reference}>
-                                  {reference}
+                                <Td py={3.5}>
+                                  <Tooltip label="Click to edit reference">
+                                    <Editable
+                                      defaultValue={reference}
+                                      onSubmit={(newRef) => handleReferenceChange(monthKey, index, newRef)}
+                                      color="gray.500"
+                                    >
+                                      <EditablePreview 
+                                        _hover={{ bg: 'gray.100' }} 
+                                        px={2} 
+                                        maxW="100%" 
+                                        isTruncated
+                                      />
+                                      <EditableInput px={2} />
+                                    </Editable>
+                                  </Tooltip>
                                 </Td>
                                 <Td py={3.5} isNumeric color={transaction.debitAmount ? "red.600" : "gray.400"} fontWeight={transaction.debitAmount ? "semibold" : "normal"}>
                                   {formatAmount(transaction.debitAmount)}
@@ -510,28 +741,49 @@ export const Transactions = () => {
                                 </Td>
                                 <Td py={3.5} isNumeric color="gray.900" fontWeight="semibold">{formatAmount(transaction.balance)}</Td>
                                 <Td py={3}>
-                                  <Select
-                                    size="sm"
-                                    value={transaction.category || ''}
-                                    onChange={(e) => handleCategoryChange(monthKey, index, e.target.value)}
-                                    placeholder="Select category"
-                                    bg="white"
-                                    borderColor="gray.200"
-                                    _hover={{ borderColor: "green.400" }}
-                                    _focus={{ borderColor: "green.500", boxShadow: "0 0 0 1px var(--chakra-colors-green-500)" }}
-                                  >
-                                    {categories
-                                      .filter(category => 
-                                        transaction.creditAmount 
-                                          ? category.type === 'INCOME'
-                                          : category.type === 'EXPENSE'
-                                      )
-                                      .map((category) => (
-                                        <option key={category.id} value={category.id}>
-                                          {category.name}
-                                        </option>
-                                      ))}
-                                  </Select>
+                                  <Box position="relative" pt={5}>
+                                    {!transaction.category && (
+                                      <HStack 
+                                        position="absolute" 
+                                        top="0" 
+                                        left="0" 
+                                        color="orange.600" 
+                                        fontSize="xs" 
+                                        fontWeight="medium"
+                                        spacing={1}
+                                        mb={1}
+                                      >
+                                        <Icon as={FiAlertCircle} />
+                                        <Text>Select a category</Text>
+                                      </HStack>
+                                    )}
+                                    <Select
+                                      size="sm"
+                                      value={transaction.category || ''}
+                                      onChange={(e) => handleCategoryChange(monthKey, index, e.target.value)}
+                                      placeholder="Select category"
+                                      bg="white"
+                                      borderColor={!transaction.category ? "orange.300" : "gray.200"}
+                                      _hover={{ borderColor: !transaction.category ? "orange.400" : "green.400" }}
+                                      _focus={{ 
+                                        borderColor: !transaction.category ? "orange.500" : "green.500",
+                                        boxShadow: `0 0 0 1px ${!transaction.category ? 'var(--chakra-colors-orange-500)' : 'var(--chakra-colors-green-500)'}` 
+                                      }}
+                                      width="100%"
+                                    >
+                                      {categories
+                                        .filter(category => 
+                                          transaction.creditAmount 
+                                            ? category.type === 'INCOME'
+                                            : category.type === 'EXPENSE'
+                                        )
+                                        .map((category) => (
+                                          <option key={category.id} value={category.id}>
+                                            {category.name}
+                                          </option>
+                                        ))}
+                                    </Select>
+                                  </Box>
                                 </Td>
                               </Tr>
                             );
@@ -547,8 +799,77 @@ export const Transactions = () => {
         </VStack>
       </Container>
 
+      {/* Export Modal */}
+      <Modal isOpen={isExportModalOpen} onClose={onExportModalClose} size="md">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader bg="green.800" color="white" borderTopRadius="md" py={6} px={6}>
+            <VStack spacing={1} align="stretch">
+              <Heading size="lg" letterSpacing="tight">Export Data</Heading>
+              <Text color="green.100" fontSize="md">Choose your export format</Text>
+            </VStack>
+          </ModalHeader>
+          <ModalCloseButton color="white" />
+          <ModalBody py={6} px={6}>
+            <RadioGroup value={exportFormat} onChange={(value: 'spreadsheet' | 'backup') => setExportFormat(value)}>
+              <VStack align="stretch" spacing={4}>
+                <Box
+                  as="label"
+                  cursor="pointer"
+                  borderWidth="1px"
+                  borderColor={exportFormat === 'spreadsheet' ? 'green.500' : 'gray.200'}
+                  borderRadius="md"
+                  p={4}
+                  _hover={{ borderColor: 'green.400' }}
+                >
+                  <HStack>
+                    <Radio value="spreadsheet" colorScheme="green" />
+                    <Icon as={FiFileText} color="gray.600" boxSize={5} />
+                    <VStack align="start" spacing={0}>
+                      <Text fontWeight="medium">Spreadsheet</Text>
+                      <Text fontSize="sm" color="gray.600">Export as an Excel spreadsheet for viewing and analysis</Text>
+                    </VStack>
+                  </HStack>
+                </Box>
+                <Box
+                  as="label"
+                  cursor="pointer"
+                  borderWidth="1px"
+                  borderColor={exportFormat === 'backup' ? 'green.500' : 'gray.200'}
+                  borderRadius="md"
+                  p={4}
+                  _hover={{ borderColor: 'green.400' }}
+                >
+                  <HStack>
+                    <Radio value="backup" colorScheme="green" />
+                    <Icon as={FiDownload} color="gray.600" boxSize={5} />
+                    <VStack align="start" spacing={0}>
+                      <Text fontWeight="medium">Backup Format</Text>
+                      <Text fontSize="sm" color="gray.600">Export all data including categories and customizations</Text>
+                    </VStack>
+                  </HStack>
+                </Box>
+              </VStack>
+            </RadioGroup>
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <Button variant="ghost" onClick={onExportModalClose}>Cancel</Button>
+            <Button 
+              colorScheme="green" 
+              onClick={() => {
+                window.exportHandler?.handleExport(exportFormat);
+                onExportModalClose();
+              }}
+              leftIcon={<Icon as={exportFormat === 'spreadsheet' ? FiFileText : FiDownload} />}
+            >
+              Export
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       {/* Category Management Modal */}
-      <Modal isOpen={isOpen} onClose={onClose} size="xl">
+      <Modal isOpen={isCategoryModalOpen} onClose={onCategoryModalClose} size="xl">
         <ModalOverlay />
         <ModalContent>
           <ModalHeader bg="green.800" color="white" borderTopRadius="md" py={6} px={6}>

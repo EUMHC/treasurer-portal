@@ -1,19 +1,27 @@
-import { Box, VStack, Heading, Text, Image, Button, HStack, Divider } from '@chakra-ui/react';
+import { Box, VStack, Heading, Text, Image, Button, HStack, Divider, Stat, StatLabel, StatNumber, StatGroup } from '@chakra-ui/react';
 import { FileUpload } from '../components/FileUpload';
 import { useNavigate } from 'react-router-dom';
-import { getTransactions } from '../utils/storage';
+import { getTransactions, getCategories } from '../utils/storage';
 import { FiArrowRight } from 'react-icons/fi';
 
 export const Home = () => {
   const navigate = useNavigate();
-  const hasSavedData = getTransactions().length > 0;
+  const transactions = getTransactions();
+  const categories = getCategories();
+  
+  // Calculate statistics
+  const stats = {
+    total: transactions.length,
+    categorized: transactions.filter(t => t.category).length,
+    totalCategories: categories.length
+  };
 
   const handleUploadSuccess = () => {
-    navigate('/transactions');
+    navigate('/treasurer-portal/transactions');
   };
 
   const handleContinue = () => {
-    navigate('/transactions');
+    navigate('/treasurer-portal/transactions');
   };
 
   return (
@@ -68,7 +76,7 @@ export const Home = () => {
         </Heading>
         
         <VStack spacing={4} w="100%">
-          {hasSavedData && (
+          {stats.total > 0 && (
             <>
               <Button
                 leftIcon={<FiArrowRight />}
@@ -81,6 +89,30 @@ export const Home = () => {
               >
                 Continue with Saved Data
               </Button>
+
+              <StatGroup 
+                textAlign="center" 
+                color="white" 
+                bg="green.700" 
+                p={3} 
+                borderRadius="md" 
+                border="1px" 
+                borderColor="green.600"
+                w="100%"
+              >
+                <Stat>
+                  <StatLabel color="green.100">Transactions</StatLabel>
+                  <StatNumber>{stats.total}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel color="green.100">Categories</StatLabel>
+                  <StatNumber>{stats.totalCategories}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel color="green.100">Categorized</StatLabel>
+                  <StatNumber>{((stats.categorized / stats.total) * 100).toFixed(0)}%</StatNumber>
+                </Stat>
+              </StatGroup>
               
               <HStack w="100%" my={2}>
                 <Divider borderColor="green.600" />
@@ -91,7 +123,7 @@ export const Home = () => {
           )}
           
           <Text textAlign="center" color="green.100">
-            {hasSavedData ? 'Import new transaction data' : 'Import your transaction data to get started'}
+            {stats.total > 0 ? 'Import new transaction data' : 'Import your transaction data to get started'}
           </Text>
           
           <Box w="100%">
