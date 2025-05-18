@@ -280,7 +280,7 @@ export const BudgetSummary = () => {
 
             <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden" mb={4}>
               <Heading size="md" p={4} bg="green.900" color="white">Income Variance from Budget</Heading>
-              <Box p={6}>
+              <Box p={6} height={`${Math.max(200, (categorySummaries.filter(s => s.type === 'INCOME' && (s.budgeted !== 0 || s.actual !== 0)).length * 50) + 40)}px`}>
                 <Bar 
                   data={{
                     labels: categorySummaries
@@ -341,7 +341,8 @@ export const BudgetSummary = () => {
                         },
                         ticks: {
                           font: {
-                            size: 11,
+                            size: 14,
+                            weight: 'bold'
                           },
                         },
                       },
@@ -358,7 +359,7 @@ export const BudgetSummary = () => {
                       },
                     },
                   }}
-                  height={200}
+                  height={Math.max(200, categorySummaries.filter(s => s.type === 'INCOME' && (s.budgeted !== 0 || s.actual !== 0)).length * 40)}
                 />
               </Box>
             </Box>
@@ -435,7 +436,7 @@ export const BudgetSummary = () => {
 
             <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden">
               <Heading size="md" p={4} bg="green.900" color="white">Expense Variance from Budget</Heading>
-              <Box p={6}>
+              <Box p={6} height={`${Math.max(200, (categorySummaries.filter(s => s.type === 'EXPENSE' && (s.budgeted !== 0 || s.actual !== 0)).length * 50) + 40)}px`}>
                 <Bar 
                   data={{
                     labels: categorySummaries
@@ -496,7 +497,8 @@ export const BudgetSummary = () => {
                         },
                         ticks: {
                           font: {
-                            size: 11,
+                            size: 14,
+                            weight: 'bold'
                           },
                         },
                       },
@@ -513,7 +515,7 @@ export const BudgetSummary = () => {
                       },
                     },
                   }}
-                  height={200}
+                  height={Math.max(200, categorySummaries.filter(s => s.type === 'EXPENSE' && (s.budgeted !== 0 || s.actual !== 0)).length * 40)}
                 />
               </Box>
             </Box>
