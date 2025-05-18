@@ -4,7 +4,21 @@ import { calculateYearlySummary, formatCurrency, getMonthName, getAvailableAcade
 import { getCategories } from '../utils/storage';
 import { useState, useMemo } from 'react';
 import type { Category } from '../types/transaction';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, Sector } from 'recharts';
+import { 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  Sector,
+  ComposedChart,
+  Area,
+  Line,
+} from 'recharts';
 import type { ActiveShape } from 'recharts/types/util/types';
 import type { PieSectorDataItem } from 'recharts/types/polar/Pie';
 
@@ -62,12 +76,32 @@ export const YearlySummary = () => {
     category.id && summary.yearTotals.activeCategories.expenses.has(category.id)
   );
 
-  // Prepare data for line chart
-  const lineChartData = months.map(month => ({
-    name: getMonthName(month),
-    Income: summary[month]?.totalIncome || 0,
-    Expenses: summary[month]?.totalExpenses || 0,
-  }));
+  // Prepare data for line chart with running balance
+  interface MonthData {
+    name: string;
+    Income: number;
+    Expenses: number;
+    Balance: number;
+    RunningBalance: number;
+  }
+
+  const lineChartData = months.map((month, index) => {
+    const monthData: MonthData = {
+      name: getMonthName(month),
+      Income: summary[month]?.totalIncome || 0,
+      Expenses: summary[month]?.totalExpenses || 0,
+      Balance: summary[month]?.netChange || 0,
+      RunningBalance: 0, // Will be set below
+    };
+
+    // Calculate running balance
+    monthData.RunningBalance = months
+      .slice(0, index + 1)
+      .reduce((acc, m) => acc + (summary[m]?.netChange || 0), 0);
+
+    return monthData;
+  });
+
 
   // Prepare data for pie charts with sorting and uncategorized amounts
   const incomePieData = useMemo(() => {
@@ -211,11 +245,11 @@ export const YearlySummary = () => {
           {/* Monthly Income vs Expenses Line Chart */}
           <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden" width="100%">
             <Box bg="green.800" p={4}>
-              <Text fontSize="lg" fontWeight="semibold" color="white">Monthly Income vs Expenses</Text>
+              <Text fontSize="lg" fontWeight="semibold" color="white">Monthly Income, Expenses & Balance</Text>
             </Box>
             <Box p={6} height="400px">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={lineChartData}>
+                <ComposedChart data={lineChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis 
@@ -240,10 +274,21 @@ export const YearlySummary = () => {
                     strokeWidth={2}
                     dot={{ r: 4 }}
                   />
-                </LineChart>
+                  <Area
+                    type="monotone"
+                    dataKey="RunningBalance"
+                    fill="#3182CE"
+                    stroke="#3182CE"
+                    fillOpacity={0.1}
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                    name="Running Balance"
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </Box>
           </Box>
+
 
           {/* Income Table */}
           {incomeCategories.length > 0 && (
@@ -473,60 +518,8 @@ export const YearlySummary = () => {
             </Box>
           )}
 
-          {/* Net Change Table */}
-          <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden">
-            <Box bg="green.800" p={4}>
-              <Text fontSize="lg" fontWeight="semibold" color="white">Monthly Net Change</Text>
-            </Box>
-            <Box overflowX="auto">
-              <Table variant="simple">
-                <Thead bg="grey.50">
-                  <Tr>
-                    <Th borderBottom="2px" borderColor="grey.100" color="grey.700">Month</Th>
-                    <Th 
-                      borderBottom="2px" 
-                      borderColor="grey.100"
-                      textAlign="right"
-                      color="green.700"
-                    >
-                      Net Change
-                    </Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {months.map(month => (
-                    <Tr key={month}>
-                      <Td borderBottom="1px" borderColor="green.50">
-                        {getMonthName(month)}
-                      </Td>
-                      <Td 
-                        isNumeric 
-                        borderBottom="1px" 
-                        borderColor="green.50"
-                        color={(summary[month]?.netChange || 0) >= 0 ? "green.700" : "red.600"}
-                        fontWeight="medium"
-                      >
-                        {formatCurrency(summary[month]?.netChange || 0)}
-                      </Td>
-                    </Tr>
-                  ))}
-                  <Tr bg="grey.50">
-                    <Td fontWeight="semibold" color="grey.800">Total Net Change</Td>
-                    <Td 
-                      isNumeric 
-                      fontWeight="semibold"
-                      color={summary.yearTotals.netChange >= 0 ? "green.700" : "red.600"}
-                    >
-                      {formatCurrency(summary.yearTotals.netChange)}
-                    </Td>
-                  </Tr>
-                </Tbody>
-              </Table>
-            </Box>
-          </Box>
-
-          {/* Category Distribution Pie Charts */}
-          <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={6} width="100%">
+                    {/* Category Distribution Pie Charts */}
+                    <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)" }} gap={6} width="100%">
             {/* Income Distribution */}
             {incomePieData.length > 0 && (
               <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden">
@@ -669,6 +662,59 @@ export const YearlySummary = () => {
               </Box>
             )}
           </Grid>
+
+          {/* Net Change Table */}
+          <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden">
+            <Box bg="green.800" p={4}>
+              <Text fontSize="lg" fontWeight="semibold" color="white">Monthly Net Change</Text>
+            </Box>
+            <Box overflowX="auto">
+              <Table variant="simple">
+                <Thead bg="grey.50">
+                  <Tr>
+                    <Th borderBottom="2px" borderColor="grey.100" color="grey.700">Month</Th>
+                    <Th 
+                      borderBottom="2px" 
+                      borderColor="grey.100"
+                      textAlign="right"
+                      color="green.700"
+                    >
+                      Net Change
+                    </Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {months.map(month => (
+                    <Tr key={month}>
+                      <Td borderBottom="1px" borderColor="green.50">
+                        {getMonthName(month)}
+                      </Td>
+                      <Td 
+                        isNumeric 
+                        borderBottom="1px" 
+                        borderColor="green.50"
+                        color={(summary[month]?.netChange || 0) >= 0 ? "green.700" : "red.600"}
+                        fontWeight="medium"
+                      >
+                        {formatCurrency(summary[month]?.netChange || 0)}
+                      </Td>
+                    </Tr>
+                  ))}
+                  <Tr bg="grey.50">
+                    <Td fontWeight="semibold" color="grey.800">Total Net Change</Td>
+                    <Td 
+                      isNumeric 
+                      fontWeight="semibold"
+                      color={summary.yearTotals.netChange >= 0 ? "green.700" : "red.600"}
+                    >
+                      {formatCurrency(summary.yearTotals.netChange)}
+                    </Td>
+                  </Tr>
+                </Tbody>
+              </Table>
+            </Box>
+          </Box>
+
         </VStack>
       </Container>
     </>

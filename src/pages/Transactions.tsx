@@ -22,38 +22,23 @@ import {
   useToast,
   Progress,
   Icon,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
   useDisclosure,
-  Tabs,
-  TabList,
-  TabPanels,
-  TabPanel,
-  Tab,
-  Input,
-  IconButton,
+  Tooltip,
   Editable,
   EditableInput,
   EditablePreview,
-  Tooltip,
-  Radio,
-  RadioGroup,
-  ModalFooter
 } from '@chakra-ui/react';
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Transaction, Category, CategoryType } from '../types/transaction';
-import { getTransactions, getCategories, saveTransactions, saveCategories, getBudgetedAmounts } from '../utils/storage';
+import type { Transaction, Category } from '../types/transaction';
+import { getTransactions, getCategories, saveTransactions, saveCategories } from '../utils/storage';
 import { Navigation } from '../components/Navigation';
-import { FiZap, FiSettings, FiTrash2, FiAlertCircle, FiFileText, FiDownload } from 'react-icons/fi';
+import { FiZap, FiSettings, FiAlertCircle } from 'react-icons/fi';
 import { FiArrowUp, FiArrowDown } from 'react-icons/fi';
 import { ensureDefaultCategories } from '../utils/categories';
 import { parseDescription } from '../utils/parseDescription';
 import { saveMapping, applyStoredMappings } from '../utils/transactionMappings';
+import { CategoryManagementModal } from '../components/CategoryManagementModal';
 
 type GroupedTransactions = {
   [key: string]: Transaction[];
@@ -135,7 +120,7 @@ const TransactionRow = memo(({
           <Box maxW="200px">
             <Editable
               defaultValue={name}
-              onSubmit={(newName) => onNameChange(monthKey, index, newName)}
+              onSubmit={(newName: string) => onNameChange(monthKey, index, newName)}
               color="gray.700"
             >
               <EditablePreview 
@@ -157,7 +142,7 @@ const TransactionRow = memo(({
           <Box maxW="200px">
             <Editable
               defaultValue={reference}
-              onSubmit={(newRef) => onReferenceChange(monthKey, index, newRef)}
+              onSubmit={(newRef: string) => onReferenceChange(monthKey, index, newRef)}
               color="gray.500"
             >
               <EditablePreview 
@@ -334,21 +319,12 @@ export const Transactions = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransactions>({});
   const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryType, setNewCategoryType] = useState<CategoryType>('EXPENSE');
   const { 
     isOpen: isCategoryModalOpen, 
     onOpen: onCategoryModalOpen, 
     onClose: onCategoryModalClose 
   } = useDisclosure();
   
-  const {
-    isOpen: isExportModalOpen,
-    onOpen: onExportModalOpen,
-    onClose: onExportModalClose
-  } = useDisclosure();
-
-  const [exportFormat, setExportFormat] = useState<'spreadsheet' | 'backup'>('spreadsheet');
   const toast = useToast();
 
   // Calculate categorization statistics
@@ -430,52 +406,6 @@ export const Transactions = () => {
     }
     loadData();
   }, [loadData, navigate]);
-
-  // Expose the export functionality to the window object
-  useEffect(() => {
-    const exportHandler: ExportHandler = {
-      openExportModal: onExportModalOpen,
-      handleExport: (format) => {
-        setExportFormat(format);
-        if (format === 'spreadsheet') {
-          window.exportToSpreadsheet?.();
-        } else {
-          // Create backup format
-          const budgetedAmts = getBudgetedAmounts();
-          const allBudgets = Object.entries(budgetedAmts).map(([categoryId, amount]) => ({
-            categoryId,
-            amount,
-            date: new Date().toISOString().split('T')[0] // Current date as YYYY-MM-DD
-          }));
-
-          const backup = {
-            transactions: Object.values(groupedTransactions).flat(),
-            categories: categories,
-            budgets: allBudgets,
-            budgetedAmounts: budgetedAmts,
-            version: '1.0'
-          };
-          
-          // Create and download the file
-          const dataStr = JSON.stringify(backup, null, 2);
-          const dataBlob = new Blob([dataStr], { type: 'application/json' });
-          const url = URL.createObjectURL(dataBlob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `treasurer-backup-${new Date().toISOString().split('T')[0]}.json`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-        }
-      }
-    };
-
-    window.exportHandler = exportHandler;
-    return () => {
-      delete window.exportHandler;
-    };
-  }, [groupedTransactions, categories, onExportModalOpen]);
 
   const handleCategoryChange = (monthKey: string, transactionIndex: number, categoryId: string) => {
     const updatedGrouped = { ...groupedTransactions };
@@ -655,54 +585,6 @@ export const Transactions = () => {
     }
   };
 
-  const handleSaveCategory = useCallback(() => {
-    if (!newCategoryName.trim()) {
-      toast({
-        title: "Error",
-        description: "Category name cannot be empty",
-        status: "error",
-        duration: 3000,
-      });
-      return;
-    }
-
-    const newCategory: Category = {
-      id: `cat_${Date.now()}`,
-      name: newCategoryName,
-      type: newCategoryType,
-      color: newCategoryType === 'INCOME' ? '#38A169' : '#E53E3E'
-    };
-    
-    setCategories(prevCategories => {
-      const updatedCategories = [...prevCategories, newCategory];
-      saveCategories(updatedCategories);
-      return updatedCategories;
-    });
-    
-    setNewCategoryName('');
-    toast({
-      title: "Success",
-      description: "Category added successfully",
-      status: "success",
-      duration: 3000,
-    });
-  }, [newCategoryName, newCategoryType, toast]);
-
-  const handleDeleteCategory = useCallback((categoryId: string) => {
-    setCategories(prevCategories => {
-      const updatedCategories = prevCategories.filter(c => c.id !== categoryId);
-      saveCategories(updatedCategories);
-      return updatedCategories;
-    });
-    
-    toast({
-      title: "Success",
-      description: "Category deleted successfully",
-      status: "success",
-      duration: 3000,
-    });
-  }, [toast]);
-
   const handleNameChange = (monthKey: string, transactionIndex: number, newName: string) => {
     const updatedGrouped = { ...groupedTransactions };
     const monthTransactions = [...(updatedGrouped[monthKey] || [])];
@@ -854,7 +736,7 @@ export const Transactions = () => {
         </Container>
       </Box>
 
-      <Container maxW="container.xl" py={6} px={4}>
+      <Container maxW="container.xl" py={6} px={4} minH="calc(100vh - 180px)">
         <VStack spacing={6} align="stretch" width="100%">
           <Accordion allowMultiple defaultIndex={[0]}>
             {Object.entries(groupedTransactions).map(([monthKey, transactions]) => (
@@ -872,227 +754,13 @@ export const Transactions = () => {
         </VStack>
       </Container>
 
-      {/* Export Modal */}
-      <Modal isOpen={isExportModalOpen} onClose={onExportModalClose} size="md">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader bg="green.800" color="white" borderTopRadius="md" py={6} px={6}>
-            <VStack spacing={1} align="stretch">
-              <Heading size="lg" letterSpacing="tight">Export Data</Heading>
-              <Text color="green.100" fontSize="md">Choose your export format</Text>
-            </VStack>
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={6} px={6}>
-            <RadioGroup value={exportFormat} onChange={(value: 'spreadsheet' | 'backup') => setExportFormat(value)}>
-              <VStack align="stretch" spacing={4}>
-                <Box
-                  as="label"
-                  cursor="pointer"
-                  borderWidth="1px"
-                  borderColor={exportFormat === 'spreadsheet' ? 'green.500' : 'gray.200'}
-                  borderRadius="md"
-                  p={4}
-                  _hover={{ borderColor: 'green.400' }}
-                >
-                  <HStack>
-                    <Radio value="spreadsheet" colorScheme="green" />
-                    <Icon as={FiFileText} color="gray.600" boxSize={5} />
-                    <VStack align="start" spacing={0}>
-                      <Text fontWeight="medium">Spreadsheet</Text>
-                      <Text fontSize="sm" color="gray.600">Export as an Excel spreadsheet for viewing and analysis</Text>
-                    </VStack>
-                  </HStack>
-                </Box>
-                <Box
-                  as="label"
-                  cursor="pointer"
-                  borderWidth="1px"
-                  borderColor={exportFormat === 'backup' ? 'green.500' : 'gray.200'}
-                  borderRadius="md"
-                  p={4}
-                  _hover={{ borderColor: 'green.400' }}
-                >
-                  <HStack>
-                    <Radio value="backup" colorScheme="green" />
-                    <Icon as={FiDownload} color="gray.600" boxSize={5} />
-                    <VStack align="start" spacing={0}>
-                      <Text fontWeight="medium">Backup Format</Text>
-                      <Text fontSize="sm" color="gray.600">Export all data including categories and customizations</Text>
-                    </VStack>
-                  </HStack>
-                </Box>
-              </VStack>
-            </RadioGroup>
-          </ModalBody>
-          <ModalFooter gap={3}>
-            <Button variant="ghost" onClick={onExportModalClose}>Cancel</Button>
-            <Button 
-              colorScheme="green" 
-              onClick={() => {
-                window.exportHandler?.handleExport(exportFormat);
-                onExportModalClose();
-              }}
-              leftIcon={<Icon as={exportFormat === 'spreadsheet' ? FiFileText : FiDownload} />}
-            >
-              Export
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
       {/* Category Management Modal */}
-      <Modal isOpen={isCategoryModalOpen} onClose={onCategoryModalClose} size="xl">
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader bg="green.800" color="white" borderTopRadius="md" py={6} px={6}>
-            <VStack spacing={1} align="stretch">
-              <Heading size="lg" letterSpacing="tight">Manage Categories</Heading>
-              <Text color="green.100" fontSize="md">Add, edit, or remove transaction categories</Text>
-            </VStack>
-          </ModalHeader>
-          <ModalCloseButton color="white" />
-          <ModalBody py={6} px={6}>
-            <Tabs variant="unstyled">
-              <TabList gap={3} mb={6}>
-                <Tab 
-                  flex={1}
-                  border="1px"
-                  borderColor="gray.200"
-                  borderRadius="md"
-                  py={2}
-                  _selected={{ 
-                    bg: 'white',
-                    color: 'green.800',
-                    borderColor: 'green.800',
-                    fontWeight: 'medium'
-                  }}
-                >
-                  Income Categories
-                </Tab>
-                <Tab 
-                  flex={1}
-                  border="1px"
-                  borderColor="gray.200"
-                  borderRadius="md"
-                  py={2}
-                  _selected={{ 
-                    bg: 'white',
-                    color: 'green.800',
-                    borderColor: 'green.800',
-                    fontWeight: 'medium'
-                  }}
-                >
-                  Expense Categories
-                </Tab>
-              </TabList>
-
-              <TabPanels>
-                <TabPanel p={0}>
-                  <VStack spacing={4} align="stretch">
-                    <Flex>
-                      <Input
-                        placeholder="New income category"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        mr={2}
-                        size="sm"
-                        borderColor="gray.200"
-                      />
-                      <Button 
-                        colorScheme="green" 
-                        onClick={() => {
-                          setNewCategoryType('INCOME');
-                          handleSaveCategory();
-                        }}
-                        size="sm"
-                      >
-                        Add
-                      </Button>
-                    </Flex>
-                    <VStack spacing={1} align="stretch">
-                      {categories
-                        .filter(cat => cat.type === 'INCOME')
-                        .map(category => (
-                          <Flex
-                            key={category.id}
-                            justify="space-between"
-                            align="center"
-                            py={2}
-                            px={1}
-                            borderBottom="1px"
-                            borderColor="gray.100"
-                            _hover={{ bg: 'gray.50' }}
-                          >
-                            <Text fontSize="sm">{category.name}</Text>
-                            <IconButton
-                              aria-label="Delete category"
-                              icon={<FiTrash2 size="1em" />}
-                              variant="ghost"
-                              size="sm"
-                              colorScheme="red"
-                              onClick={() => handleDeleteCategory(category.id)}
-                            />
-                          </Flex>
-                        ))}
-                    </VStack>
-                  </VStack>
-                </TabPanel>
-                <TabPanel p={0}>
-                  <VStack spacing={4} align="stretch">
-                    <Flex>
-                      <Input
-                        placeholder="New expense category"
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        mr={2}
-                        size="sm"
-                        borderColor="gray.200"
-                      />
-                      <Button 
-                        colorScheme="green" 
-                        onClick={() => {
-                          setNewCategoryType('EXPENSE');
-                          handleSaveCategory();
-                        }}
-                        size="sm"
-                      >
-                        Add
-                      </Button>
-                    </Flex>
-                    <VStack spacing={1} align="stretch">
-                      {categories
-                        .filter(cat => cat.type === 'EXPENSE')
-                        .map(category => (
-                          <Flex
-                            key={category.id}
-                            justify="space-between"
-                            align="center"
-                            py={2}
-                            px={1}
-                            borderBottom="1px"
-                            borderColor="gray.100"
-                            _hover={{ bg: 'gray.50' }}
-                          >
-                            <Text fontSize="sm">{category.name}</Text>
-                            <IconButton
-                              aria-label="Delete category"
-                              icon={<FiTrash2 size="1em" />}
-                              variant="ghost"
-                              size="sm"
-                              colorScheme="red"
-                              onClick={() => handleDeleteCategory(category.id)}
-                            />
-                          </Flex>
-                        ))}
-                    </VStack>
-                  </VStack>
-                </TabPanel>
-              </TabPanels>
-            </Tabs>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+      <CategoryManagementModal
+        isOpen={isCategoryModalOpen}
+        onClose={onCategoryModalClose}
+        categories={categories}
+        setCategories={setCategories}
+      />
     </>
   );
 }; 

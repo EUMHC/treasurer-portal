@@ -17,9 +17,11 @@ import {
 } from '@chakra-ui/react';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { FiLogOut, FiDownload, FiTrash2 } from 'react-icons/fi';
-import { useRef, type RefObject } from 'react';
+import { useRef, type RefObject, useEffect } from 'react';
 import type { FocusableElement } from '@chakra-ui/utils';
 import { clearMappings } from '../utils/transactionMappings';
+import { ExportModal } from './ExportModal';
+import { initializeExportHandlers, cleanupExportHandlers } from '../utils/export';
 
 export const Navigation = () => {
   const location = useLocation();
@@ -29,8 +31,27 @@ export const Navigation = () => {
     onOpen: onClearOpen,
     onClose: onClearClose
   } = useDisclosure();
+
+  const {
+    isOpen: isExportOpen,
+    onOpen: onExportOpen,
+    onClose: onExportClose
+  } = useDisclosure();
+
   const cancelRef = useRef<HTMLButtonElement | null>(null);
   const toast = useToast();
+
+  // Initialize export handlers
+  useEffect(() => {
+    initializeExportHandlers(
+      onExportOpen,
+      () => window.exportToSpreadsheet?.()
+    );
+
+    return () => {
+      cleanupExportHandlers();
+    };
+  }, [onExportOpen]);
 
   const NavLink = ({ to, children }: { to: string; children: React.ReactNode }) => {
     const isActive = location.pathname === to;
@@ -111,7 +132,7 @@ export const Navigation = () => {
               <ButtonGroup spacing={3}>
                 <Button
                   leftIcon={<FiDownload />}
-                  onClick={() => window.exportHandler?.openExportModal()}
+                  onClick={onExportOpen}
                   colorScheme="green"
                   variant="solid"
                   size="md"
@@ -180,6 +201,9 @@ export const Navigation = () => {
           </AlertDialogContent>
         </AlertDialogOverlay>
       </AlertDialog>
+
+      {/* Export Modal */}
+      <ExportModal isOpen={isExportOpen} onClose={onExportClose} />
     </>
   );
 }; 
