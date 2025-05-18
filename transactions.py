@@ -3,37 +3,6 @@ import re
 from typing import Dict, Optional
 from datetime import datetime
 
-# Normal case split appropriately
-# MORGAN DANIEL 200000001431899565 KIT AMAZON 608371
-# Name: MORGAN DANIEL
-# Reference: KIT AMAZON
-
-# when no random codes, split words put codes in reference
-# EDIN UNIVERSITY EUSU MSL INCOME
-# Name: EDIN UNIVERSITY EUSU
-# Reference: MSL INCOME
-
-# FREDDIE KELLEY GRE 100000001416617685 FLYERS + POSTERS 600409     10 20SEP24 19:18
-# Name: FREDDIE KELLEY GRE
-# Reference: FLYERS + POSTERS
-
-# When no random codes, split words put codes in reference
-# PLYRDATA TGRSZLFJKM7EL3KG7V
-# Name: PLYRDATA
-# Reference: TGRSZLFJKM7EL3KG7V
-
-# IONOS CLOUD LTD. V19598536-63254174
-# Name: IONOS CLOUD LTD.
-# Reference: V19598536-63254174
-
-# FINLAY M DOWER 100000001458679528 UMPIRE 834700     10 02DEC24 14:56
-# Name: FINLAY M DOWER
-# Reference: UMPIRE
-
-# SANTA COHU DAVIES 100000001458675129 UMP SEM1 779112     10 02DEC24 14:50
-# Name: SANTA COHU DAVIES
-# Reference: UMP SEM1
-
 def clean_string(s: str) -> str:
     """Remove extra whitespace and trim."""
     return ' '.join(s.split())
