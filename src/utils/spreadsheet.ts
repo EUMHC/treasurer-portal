@@ -267,7 +267,10 @@ const createMonthlySheet = async (
 
     // Add income transactions
     incomeTransactions.forEach(transaction => {
-      const { name, reference } = parseDescription(transaction.transactionDescription || '');
+      const { name, reference } = parseDescription({ 
+        description: transaction.transactionDescription || '',
+        type: transaction.transactionType
+      });
       const row = worksheet.getRow(currentRow);
       
       // Add data starting from column A
@@ -338,7 +341,10 @@ const createMonthlySheet = async (
 
     // Add expense transactions
     expenditureTransactions.forEach(transaction => {
-      const { name, reference } = parseDescription(transaction.transactionDescription || '');
+      const { name, reference } = parseDescription({ 
+        description: transaction.transactionDescription || '',
+        type: transaction.transactionType
+      });
       const row = worksheet.getRow(currentRow);
       
       // Add data starting from column A
@@ -849,6 +855,11 @@ const createBudgetSummary = async (workbook: ExcelJS.Workbook, processedData: Mo
   worksheet.getRow(3).height = 10;
 
   let currentRow = 4;
+  let chartStartRow = 4;
+
+  // Store category data for charts
+  const incomeData: { category: string; budgeted: number; actual: number; variance: number }[] = [];
+  const expenseData: { category: string; budgeted: number; actual: number; variance: number }[] = [];
 
   // Process income and expenses separately
   ['INCOME', 'EXPENSE'].forEach(type => {
@@ -900,12 +911,15 @@ const createBudgetSummary = async (workbook: ExcelJS.Workbook, processedData: Mo
           ? actual - budgeted
           : budgeted - actual;
 
-        return {
-          category: category.name,
-          budgeted,
-          actual,
-          variance
-        };
+        // Store data for charts
+        const data = { category: category.name, budgeted, actual, variance };
+        if (type === 'INCOME') {
+          incomeData.push(data);
+        } else {
+          expenseData.push(data);
+        }
+
+        return data;
       })
       .filter(summary => summary.budgeted !== 0 || summary.actual !== 0);
 
@@ -970,6 +984,55 @@ const createBudgetSummary = async (workbook: ExcelJS.Workbook, processedData: Mo
         bottom: { style: 'double', color: { argb: BORDER_COLOR } }
       };
     });
+
+    // Add chart after each section
+    if (categoryActuals.length > 0) {
+      currentRow += 2;
+
+      // Add chart title
+      const chartTitleRow = worksheet.getRow(currentRow);
+      chartTitleRow.getCell(1).value = `${type} - Budget vs Actual`;
+      chartTitleRow.getCell(1).font = { bold: true, size: 12 };
+      currentRow++;
+
+      // Create chart
+      const chart = workbook.addChart({
+        type: 'column',
+        style: 2,
+      } as ExcelJS.ChartOptions) as ExcelJS.Chart;
+
+      // Add the data series for budgeted amounts
+      chart.addSeries({
+        name: 'Budget',
+        categories: categoryActuals.map(c => c.category),
+        values: categoryActuals.map(c => c.budgeted),
+        color: type === 'INCOME' ? '2E7D32' : 'D32F2F'
+      });
+
+      // Add the data series for actual amounts
+      chart.addSeries({
+        name: 'Actual',
+        categories: categoryActuals.map(c => c.category),
+        values: categoryActuals.map(c => c.actual),
+        color: type === 'INCOME' ? '66BB6A' : 'EF5350'
+      });
+
+      // Configure chart
+      chart.setTitle({
+        name: `${type} Categories - Budget vs Actual`,
+        color: '000000'
+      });
+
+      chart.setSize({
+        width: 600,
+        height: 300
+      });
+
+      chart.setPosition(`A${currentRow}`, 0);
+
+      // Update current row to account for chart height
+      currentRow += 18;
+    }
 
     currentRow += 2; // Add spacing between sections
   });

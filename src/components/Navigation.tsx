@@ -24,11 +24,6 @@ import { clearMappings } from '../utils/transactionMappings';
 export const Navigation = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { 
-    isOpen: isExitOpen, 
-    onOpen: onExitOpen, 
-    onClose: onExitClose 
-  } = useDisclosure();
   const {
     isOpen: isClearOpen,
     onOpen: onClearOpen,
@@ -58,10 +53,6 @@ export const Navigation = () => {
         {children}
       </Link>
     );
-  };
-
-  const handleExit = () => {
-    navigate('/treasurer-portal');
   };
 
   const handleClearCache = () => {
@@ -149,7 +140,7 @@ export const Navigation = () => {
                   color="white"
                   borderColor="green.600"
                   _hover={{ bg: 'green.700' }}
-                  onClick={onExitOpen}
+                  onClick={() => navigate('/treasurer-portal')}
                 >
                   Exit
                 </Button>
@@ -159,40 +150,6 @@ export const Navigation = () => {
         </Container>
       </Box>
 
-      {/* Exit Confirmation Dialog */}
-      <AlertDialog
-        isOpen={isExitOpen}
-        leastDestructiveRef={cancelRef as RefObject<FocusableElement>}
-        onClose={onExitClose}
-      >
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold" bg="green.900" color="white" borderTopRadius="md">
-              Confirm Exit
-            </AlertDialogHeader>
-
-            <AlertDialogBody pt={4}>
-              Are you sure you want to exit? Any unsaved changes to budgets or categories will be lost.
-            </AlertDialogBody>
-
-            <AlertDialogFooter gap={3}>
-              <Button ref={cancelRef} onClick={onExitClose}>
-                Cancel
-              </Button>
-              <Button 
-                colorScheme="red" 
-                onClick={() => {
-                  onExitClose();
-                  handleExit();
-                }}
-              >
-                Exit
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
-
       {/* Clear Cache Confirmation Dialog */}
       <AlertDialog
         isOpen={isClearOpen}
@@ -201,23 +158,12 @@ export const Navigation = () => {
       >
         <AlertDialogOverlay>
           <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold" bg="red.700" color="white" borderTopRadius="md">
+            <AlertDialogHeader fontSize="lg" fontWeight="bold" bg="green.900" color="white" borderTopRadius="md">
               Clear Cache
             </AlertDialogHeader>
 
             <AlertDialogBody pt={4}>
-              <Text mb={4}>
-                This will clear all stored data, including:
-              </Text>
-              <Text as="ul" pl={4}>
-                <Text as="li">• All transaction name/reference customizations</Text>
-                <Text as="li">• All category assignments</Text>
-                <Text as="li">• All custom categories</Text>
-                <Text as="li">• All other settings</Text>
-              </Text>
-              <Text mt={4} fontWeight="bold" color="red.600">
-                This action cannot be undone.
-              </Text>
+              Are you sure you want to clear all stored data? This will remove all saved mappings, categories, and settings.
             </AlertDialogBody>
 
             <AlertDialogFooter gap={3}>

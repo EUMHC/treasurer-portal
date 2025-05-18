@@ -46,8 +46,8 @@ import {
 } from '@chakra-ui/react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Transaction, Category, CategoryType, Budget } from '../types/transaction';
-import { getTransactions, getCategories, saveTransactions, saveCategories } from '../utils/storage';
+import type { Transaction, Category, CategoryType } from '../types/transaction';
+import { getTransactions, getCategories, saveTransactions, saveCategories, getBudgetedAmounts } from '../utils/storage';
 import { Navigation } from '../components/Navigation';
 import { FiZap, FiSettings, FiTrash2, FiAlertCircle, FiFileText, FiDownload } from 'react-icons/fi';
 import { FiArrowUp, FiArrowDown } from 'react-icons/fi';
@@ -192,17 +192,18 @@ export const Transactions = () => {
           window.exportToSpreadsheet?.();
         } else {
           // Create backup format
-          const allBudgets = categories.reduce((acc, category) => {
-            if (category.budgetedValues) {
-              acc.push(...category.budgetedValues);
-            }
-            return acc;
-          }, [] as Budget[]);
+          const budgetedAmts = getBudgetedAmounts();
+          const allBudgets = Object.entries(budgetedAmts).map(([categoryId, amount]) => ({
+            categoryId,
+            amount,
+            date: new Date().toISOString().split('T')[0] // Current date as YYYY-MM-DD
+          }));
 
           const backup = {
             transactions: Object.values(groupedTransactions).flat(),
             categories: categories,
             budgets: allBudgets,
+            budgetedAmounts: budgetedAmts,
             version: '1.0'
           };
           
@@ -701,36 +702,46 @@ export const Transactions = () => {
                                 <Td py={3.5} color="gray.700" fontWeight="medium">{formatDate(transaction.transactionDate)}</Td>
                                 <Td py={3.5}>
                                   <Tooltip label="Click to edit name">
-                                    <Editable
-                                      defaultValue={name}
-                                      onSubmit={(newName) => handleNameChange(monthKey, index, newName)}
-                                      color="gray.700"
-                                    >
-                                      <EditablePreview 
-                                        _hover={{ bg: 'gray.100' }} 
-                                        px={2} 
-                                        maxW="100%" 
-                                        isTruncated
-                                      />
-                                      <EditableInput px={2} />
-                                    </Editable>
+                                    <Box maxW="200px">
+                                      <Editable
+                                        defaultValue={name}
+                                        onSubmit={(newName) => handleNameChange(monthKey, index, newName)}
+                                        color="gray.700"
+                                      >
+                                        <EditablePreview 
+                                          _hover={{ bg: 'gray.100' }} 
+                                          px={2} 
+                                          w="100%"
+                                          isTruncated
+                                          overflow="hidden"
+                                          textOverflow="ellipsis"
+                                          whiteSpace="nowrap"
+                                        />
+                                        <EditableInput px={2} />
+                                      </Editable>
+                                    </Box>
                                   </Tooltip>
                                 </Td>
                                 <Td py={3.5}>
                                   <Tooltip label="Click to edit reference">
-                                    <Editable
-                                      defaultValue={reference}
-                                      onSubmit={(newRef) => handleReferenceChange(monthKey, index, newRef)}
-                                      color="gray.500"
-                                    >
-                                      <EditablePreview 
-                                        _hover={{ bg: 'gray.100' }} 
-                                        px={2} 
-                                        maxW="100%" 
-                                        isTruncated
-                                      />
-                                      <EditableInput px={2} />
-                                    </Editable>
+                                    <Box maxW="200px">
+                                      <Editable
+                                        defaultValue={reference}
+                                        onSubmit={(newRef) => handleReferenceChange(monthKey, index, newRef)}
+                                        color="gray.500"
+                                      >
+                                        <EditablePreview 
+                                          _hover={{ bg: 'gray.100' }} 
+                                          px={2} 
+                                          w="100%"
+                                          isTruncated
+                                          overflow="hidden"
+                                          textOverflow="ellipsis"
+                                          whiteSpace="nowrap"
+                                        />
+                                        <EditableInput px={2} />
+                                      </Editable>
+                                    </Box>
                                   </Tooltip>
                                 </Td>
                                 <Td py={3.5} isNumeric color={transaction.debitAmount ? "red.600" : "gray.400"} fontWeight={transaction.debitAmount ? "semibold" : "normal"}>

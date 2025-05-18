@@ -3,7 +3,7 @@ import { Text, useToast, VStack, Icon, Center, HStack, Button } from '@chakra-ui
 import { useDropzone } from 'react-dropzone';
 import Papa from 'papaparse';
 import type { Transaction, Category, Budget } from '../types/transaction';
-import { saveTransactions, saveCategories } from '../utils/storage';
+import { saveTransactions, saveCategories, saveBudgetedAmounts } from '../utils/storage';
 import { FiUploadCloud, FiFile, FiDatabase } from 'react-icons/fi';
 
 interface FileUploadProps {
@@ -26,6 +26,7 @@ interface BackupData {
   categories: Category[];
   version: string;
   budgets?: Budget[];
+  budgetedAmounts?: { [key: string]: number };
 }
 
 export const FileUpload = ({ onUploadSuccess }: FileUploadProps) => {
@@ -90,20 +91,28 @@ export const FileUpload = ({ onUploadSuccess }: FileUploadProps) => {
         throw new Error('Invalid backup file format');
       }
 
-      // Update categories with budgeted values if they exist
-      const categoriesWithBudgets = data.categories.map(category => ({
-        ...category,
-        budgetedValues: data.budgets?.filter(b => b.categoryId === category.id) || []
-      }));
-
       // Save the data
       saveTransactions(data.transactions);
-      saveCategories(categoriesWithBudgets);
+      saveCategories(data.categories);
+      
+      // Restore budgeted amounts
+      if (data.budgetedAmounts) {
+        saveBudgetedAmounts(data.budgetedAmounts);
+      } else if (data.budgets && data.budgets.length > 0) {
+        // If we have budgets but no budgetedAmounts, convert budgets to budgetedAmounts
+        const budgetedAmounts = data.budgets.reduce((acc, budget) => {
+          acc[budget.categoryId] = budget.amount;
+          return acc;
+        }, {} as { [key: string]: number });
+        saveBudgetedAmounts(budgetedAmounts);
+      }
+
       onUploadSuccess(data.transactions);
 
+      const budgetCount = data.budgetedAmounts ? Object.keys(data.budgetedAmounts).length : data.budgets?.length || 0;
       toast({
         title: 'Backup restored',
-        description: `Imported ${data.transactions.length} transactions, ${data.categories.length} categories, and ${data.budgets?.length || 0} budget entries`,
+        description: `Imported ${data.transactions.length} transactions, ${data.categories.length} categories, and ${budgetCount} budget entries`,
         status: 'success',
         duration: 5000,
         isClosable: true,
