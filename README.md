@@ -2,6 +2,10 @@
 
 A web application for managing and analyzing EUMHC (Edinburgh University Men's Hockey Club) financial transactions. The portal allows treasurers to import transaction data, view summaries, and generate detailed Exel reports. 
 
+Visit it live at https://eumhc.github.io/treasurer-portal.
+
+![Home Screenshot](./home-screenshot.png)
+
 ### Setup
 1. Clone the repository:
 ```bash
