@@ -44,7 +44,7 @@ import {
   RadioGroup,
   ModalFooter
 } from '@chakra-ui/react';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Transaction, Category, CategoryType } from '../types/transaction';
 import { getTransactions, getCategories, saveTransactions, saveCategories, getBudgetedAmounts } from '../utils/storage';
@@ -78,6 +78,255 @@ export type ExportHandler = {
   openExportModal: () => void;
   handleExport: (format: 'spreadsheet' | 'backup') => void;
 };
+
+// Memoized Transaction Row Component
+const TransactionRow = memo(({ 
+  transaction, 
+  index, 
+  monthKey, 
+  categories,
+  onCategoryChange,
+  onNameChange,
+  onReferenceChange
+}: {
+  transaction: Transaction;
+  index: number;
+  monthKey: string;
+  categories: Category[];
+  onCategoryChange: (monthKey: string, index: number, categoryId: string) => void;
+  onNameChange: (monthKey: string, index: number, newName: string) => void;
+  onReferenceChange: (monthKey: string, index: number, newReference: string) => void;
+}) => {
+  const { name, reference } = useMemo(() => parseDescription({ 
+    description: transaction.transactionDescription, 
+    type: transaction.transactionType 
+  }), [transaction.transactionDescription, transaction.transactionType]);
+
+  const formatAmount = useCallback((amount: number | null) => {
+    if (amount === null) return '-';
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP'
+    }).format(amount);
+  }, []);
+
+  const relevantCategories = useMemo(() => 
+    categories.filter(category => 
+      transaction.creditAmount 
+        ? category.type === 'INCOME'
+        : category.type === 'EXPENSE'
+    ),
+    [categories, transaction.creditAmount]
+  );
+
+  return (
+    <Tr 
+      _hover={{ bg: 'green.50' }}
+      transition="all 0.2s"
+      borderBottomWidth="1px"
+      borderColor="gray.200"
+      bg={!transaction.category ? 'orange.50' : undefined}
+    >
+      <Td py={3.5} color="gray.700" fontWeight="medium">
+        {new Date(transaction.transactionDate.split('/').reverse().join('-')).toLocaleDateString('en-GB')}
+      </Td>
+      <Td py={3.5}>
+        <Tooltip label="Click to edit name">
+          <Box maxW="200px">
+            <Editable
+              defaultValue={name}
+              onSubmit={(newName) => onNameChange(monthKey, index, newName)}
+              color="gray.700"
+            >
+              <EditablePreview 
+                _hover={{ bg: 'gray.100' }} 
+                px={2} 
+                w="100%"
+                isTruncated
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
+              />
+              <EditableInput px={2} />
+            </Editable>
+          </Box>
+        </Tooltip>
+      </Td>
+      <Td py={3.5}>
+        <Tooltip label="Click to edit reference">
+          <Box maxW="200px">
+            <Editable
+              defaultValue={reference}
+              onSubmit={(newRef) => onReferenceChange(monthKey, index, newRef)}
+              color="gray.500"
+            >
+              <EditablePreview 
+                _hover={{ bg: 'gray.100' }} 
+                px={2} 
+                w="100%"
+                isTruncated
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
+              />
+              <EditableInput px={2} />
+            </Editable>
+          </Box>
+        </Tooltip>
+      </Td>
+      <Td py={3.5} isNumeric color={transaction.debitAmount ? "red.600" : "gray.400"} fontWeight={transaction.debitAmount ? "semibold" : "normal"}>
+        {formatAmount(transaction.debitAmount)}
+      </Td>
+      <Td py={3.5} isNumeric color={transaction.creditAmount ? "green.600" : "gray.400"} fontWeight={transaction.creditAmount ? "semibold" : "normal"}>
+        {formatAmount(transaction.creditAmount)}
+      </Td>
+      <Td py={3.5} isNumeric color="gray.900" fontWeight="semibold">{formatAmount(transaction.balance)}</Td>
+      <Td py={3}>
+        <Box position="relative" pt={5}>
+          {!transaction.category && (
+            <HStack 
+              position="absolute" 
+              top="0" 
+              left="0" 
+              color="orange.600" 
+              fontSize="xs" 
+              fontWeight="medium"
+              spacing={1}
+              mb={1}
+            >
+              <Icon as={FiAlertCircle} />
+              <Text>Select a category</Text>
+            </HStack>
+          )}
+          <Select
+            size="sm"
+            value={transaction.category || ''}
+            onChange={(e) => onCategoryChange(monthKey, index, e.target.value)}
+            placeholder="Select category"
+            bg="white"
+            borderColor={!transaction.category ? "orange.300" : "gray.200"}
+            _hover={{ borderColor: !transaction.category ? "orange.400" : "green.400" }}
+            _focus={{ 
+              borderColor: !transaction.category ? "orange.500" : "green.500",
+              boxShadow: `0 0 0 1px ${!transaction.category ? 'var(--chakra-colors-orange-500)' : 'var(--chakra-colors-green-500)'}` 
+            }}
+            width="100%"
+          >
+            {relevantCategories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </Select>
+        </Box>
+      </Td>
+    </Tr>
+  );
+});
+
+// Memoized Month Section Component
+const MonthSection = memo(({ 
+  monthKey, 
+  transactions,
+  categories,
+  onCategoryChange,
+  onNameChange,
+  onReferenceChange
+}: {
+  monthKey: string;
+  transactions: Transaction[];
+  categories: Category[];
+  onCategoryChange: (monthKey: string, index: number, categoryId: string) => void;
+  onNameChange: (monthKey: string, index: number, newName: string) => void;
+  onReferenceChange: (monthKey: string, index: number, newReference: string) => void;
+}) => {
+  const totalIncome = useMemo(() => 
+    transactions.reduce((sum, t) => sum + (t.creditAmount || 0), 0),
+    [transactions]
+  );
+
+  const totalExpenses = useMemo(() => 
+    transactions.reduce((sum, t) => sum + (t.debitAmount || 0), 0),
+    [transactions]
+  );
+
+  const formatAmount = useCallback((amount: number) => {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency: 'GBP'
+    }).format(amount);
+  }, []);
+
+  const monthYear = useMemo(() => {
+    const [year, month] = monthKey.split('-').map(str => parseInt(str));
+    if (!year || !month) return '';
+    return new Date(year, month - 1).toLocaleString('en-GB', { 
+      month: 'long',
+      year: 'numeric'
+    });
+  }, [monthKey]);
+
+  return (
+    <AccordionItem border="none" mb={4}>
+      <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden">
+        <AccordionButton bg="green.800" _hover={{ bg: 'green.700' }} py={4}>
+          <Box flex="1" textAlign="left">
+            <Text fontSize="lg" fontWeight="semibold" color="white">
+              {monthYear}
+            </Text>
+          </Box>
+          <HStack spacing={8} mr={4}>
+            <HStack spacing={2}>
+              <Icon as={FiArrowUp} color="green.200" />
+              <Text color="green.200" fontSize="sm">
+                Income: {formatAmount(totalIncome)}
+              </Text>
+            </HStack>
+            <HStack spacing={2}>
+              <Icon as={FiArrowDown} color="red.200" />
+              <Text color="red.200" fontSize="sm">
+                Expenses: {formatAmount(totalExpenses)}
+              </Text>
+            </HStack>
+          </HStack>
+          <AccordionIcon color="white" />
+        </AccordionButton>
+
+        <AccordionPanel p={0}>
+          <Box overflowX="auto">
+            <Table variant="simple">
+              <Thead>
+                <Tr>
+                  <Th bg="green.50" py={4} color="gray.700" width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Date</Th>
+                  <Th bg="green.50" py={4} color="gray.700" width="18%" borderBottom="2px" borderColor="green.800" fontSize="sm">Name</Th>
+                  <Th bg="green.50" py={4} color="gray.700" width="18%" borderBottom="2px" borderColor="green.800" fontSize="sm">Reference</Th>
+                  <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Debit</Th>
+                  <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Credit</Th>
+                  <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Balance</Th>
+                  <Th bg="green.50" py={4} color="gray.700" width="24%" borderBottom="2px" borderColor="green.800" fontSize="sm">Category</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {transactions.map((transaction, index) => (
+                  <TransactionRow
+                    key={`${transaction.transactionDate}-${index}`}
+                    transaction={transaction}
+                    index={index}
+                    monthKey={monthKey}
+                    categories={categories}
+                    onCategoryChange={onCategoryChange}
+                    onNameChange={onNameChange}
+                    onReferenceChange={onReferenceChange}
+                  />
+                ))}
+              </Tbody>
+            </Table>
+          </Box>
+        </AccordionPanel>
+      </Box>
+    </AccordionItem>
+  );
+});
 
 export const Transactions = () => {
   const navigate = useNavigate();
@@ -260,41 +509,6 @@ export const Transactions = () => {
     }
   };
 
-  const calculateTotalIncome = (transactions: Transaction[]): number => {
-    return transactions.reduce((sum, t) => sum + (t.creditAmount || 0), 0);
-  };
-
-  const calculateTotalExpenses = (transactions: Transaction[]): number => {
-    return transactions.reduce((sum, t) => sum + (t.debitAmount || 0), 0);
-  };
-
-  const formatAmount = (amount: number | null) => {
-    if (amount === null) return '-';
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP'
-    }).format(amount);
-  };
-
-  const formatMonthYear = (key: string) => {
-    const [year, month] = key.split('-').map(str => parseInt(str));
-    if (!year || !month) return '';
-    return new Date(year, month - 1).toLocaleString('en-GB', { 
-      month: 'long',
-      year: 'numeric'
-    });
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = parseUKDate(dateStr);
-    if (isNaN(date.getTime())) return 'Invalid Date';
-    return date.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  };
-
   const autoCategorizeTransactions = async () => {
     setIsAutoCategorizing(true);
     try {
@@ -441,7 +655,7 @@ export const Transactions = () => {
     }
   };
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = useCallback(() => {
     if (!newCategoryName.trim()) {
       toast({
         title: "Error",
@@ -456,12 +670,15 @@ export const Transactions = () => {
       id: `cat_${Date.now()}`,
       name: newCategoryName,
       type: newCategoryType,
-      color: newCategoryType === 'INCOME' ? '#38A169' : '#E53E3E' // Default colors for new categories
+      color: newCategoryType === 'INCOME' ? '#38A169' : '#E53E3E'
     };
     
-    const updatedCategories = [...categories, newCategory];
-    setCategories(updatedCategories);
-    saveCategories(updatedCategories);
+    setCategories(prevCategories => {
+      const updatedCategories = [...prevCategories, newCategory];
+      saveCategories(updatedCategories);
+      return updatedCategories;
+    });
+    
     setNewCategoryName('');
     toast({
       title: "Success",
@@ -469,19 +686,22 @@ export const Transactions = () => {
       status: "success",
       duration: 3000,
     });
-  };
+  }, [newCategoryName, newCategoryType, toast]);
 
-  const handleDeleteCategory = (categoryId: string) => {
-    const updatedCategories = categories.filter(c => c.id !== categoryId);
-    setCategories(updatedCategories);
-    saveCategories(updatedCategories);
+  const handleDeleteCategory = useCallback((categoryId: string) => {
+    setCategories(prevCategories => {
+      const updatedCategories = prevCategories.filter(c => c.id !== categoryId);
+      saveCategories(updatedCategories);
+      return updatedCategories;
+    });
+    
     toast({
       title: "Success",
       description: "Category deleted successfully",
       status: "success",
       duration: 3000,
     });
-  };
+  }, [toast]);
 
   const handleNameChange = (monthKey: string, transactionIndex: number, newName: string) => {
     const updatedGrouped = { ...groupedTransactions };
@@ -596,15 +816,16 @@ export const Transactions = () => {
                   >
                     Auto-Categorize
                   </Button>
-                  <IconButton
+                  <Button
                     aria-label="Settings"
-                    icon={<FiSettings />}
+                    leftIcon={<FiSettings />}
                     variant="outline"
                     color="white"
                     borderColor="green.100"
                     _hover={{ bg: 'green.800' }}
-                    onClick={onCategoryModalOpen}
-                  />
+                    onClick={onCategoryModalOpen}>
+                    Edit Categories
+                  </Button>
                 </HStack>
               </Flex>
               
@@ -637,174 +858,15 @@ export const Transactions = () => {
         <VStack spacing={6} align="stretch" width="100%">
           <Accordion allowMultiple defaultIndex={[0]}>
             {Object.entries(groupedTransactions).map(([monthKey, transactions]) => (
-              <AccordionItem 
+              <MonthSection
                 key={monthKey}
-                border="none"
-                mb={4}
-              >
-                <Box bg="white" borderRadius="lg" shadow="md" overflow="hidden">
-                  <AccordionButton 
-                    bg="green.800" 
-                    _hover={{ bg: 'green.700' }}
-                    py={4}
-                  >
-                    <Box flex="1" textAlign="left">
-                      <Text fontSize="lg" fontWeight="semibold" color="white">
-                        {formatMonthYear(monthKey)}
-                      </Text>
-                    </Box>
-                    <HStack spacing={8} mr={4}>
-                      <HStack spacing={2}>
-                        <Icon as={FiArrowUp} color="green.200" />
-                        <Text color="green.200" fontSize="sm">
-                          Income: {formatAmount(calculateTotalIncome(transactions))}
-                        </Text>
-                      </HStack>
-                      <HStack spacing={2}>
-                        <Icon as={FiArrowDown} color="red.200" />
-                        <Text color="red.200" fontSize="sm">
-                          Expenses: {formatAmount(calculateTotalExpenses(transactions))}
-                        </Text>
-                      </HStack>
-                    </HStack>
-                    <AccordionIcon color="white" />
-                  </AccordionButton>
-
-                  <AccordionPanel p={0}>
-                    <Box overflowX="auto">
-                      <Table variant="simple">
-                        <Thead>
-                          <Tr>
-                            <Th bg="green.50" py={4} color="gray.700" width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Date</Th>
-                            <Th bg="green.50" py={4} color="gray.700" width="18%" borderBottom="2px" borderColor="green.800" fontSize="sm">Name</Th>
-                            <Th bg="green.50" py={4} color="gray.700" width="18%" borderBottom="2px" borderColor="green.800" fontSize="sm">Reference</Th>
-                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Debit</Th>
-                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Credit</Th>
-                            <Th bg="green.50" py={4} color="gray.700" isNumeric width="10%" borderBottom="2px" borderColor="green.800" fontSize="sm">Balance</Th>
-                            <Th bg="green.50" py={4} color="gray.700" width="24%" borderBottom="2px" borderColor="green.800" fontSize="sm">Category</Th>
-                          </Tr>
-                        </Thead>
-                        <Tbody>
-                          {transactions.map((transaction, index) => {
-                            const { name, reference } = parseDescription({ 
-                              description: transaction.transactionDescription, 
-                              type: transaction.transactionType 
-                            });
-                            return (
-                              <Tr 
-                                key={`${transaction.transactionDate}-${index}`}
-                                _hover={{ bg: 'green.50' }}
-                                transition="all 0.2s"
-                                borderBottomWidth="1px"
-                                borderColor="gray.200"
-                                bg={!transaction.category ? 'orange.50' : undefined}
-                              >
-                                <Td py={3.5} color="gray.700" fontWeight="medium">{formatDate(transaction.transactionDate)}</Td>
-                                <Td py={3.5}>
-                                  <Tooltip label="Click to edit name">
-                                    <Box maxW="200px">
-                                      <Editable
-                                        defaultValue={name}
-                                        onSubmit={(newName) => handleNameChange(monthKey, index, newName)}
-                                        color="gray.700"
-                                      >
-                                        <EditablePreview 
-                                          _hover={{ bg: 'gray.100' }} 
-                                          px={2} 
-                                          w="100%"
-                                          isTruncated
-                                          overflow="hidden"
-                                          textOverflow="ellipsis"
-                                          whiteSpace="nowrap"
-                                        />
-                                        <EditableInput px={2} />
-                                      </Editable>
-                                    </Box>
-                                  </Tooltip>
-                                </Td>
-                                <Td py={3.5}>
-                                  <Tooltip label="Click to edit reference">
-                                    <Box maxW="200px">
-                                      <Editable
-                                        defaultValue={reference}
-                                        onSubmit={(newRef) => handleReferenceChange(monthKey, index, newRef)}
-                                        color="gray.500"
-                                      >
-                                        <EditablePreview 
-                                          _hover={{ bg: 'gray.100' }} 
-                                          px={2} 
-                                          w="100%"
-                                          isTruncated
-                                          overflow="hidden"
-                                          textOverflow="ellipsis"
-                                          whiteSpace="nowrap"
-                                        />
-                                        <EditableInput px={2} />
-                                      </Editable>
-                                    </Box>
-                                  </Tooltip>
-                                </Td>
-                                <Td py={3.5} isNumeric color={transaction.debitAmount ? "red.600" : "gray.400"} fontWeight={transaction.debitAmount ? "semibold" : "normal"}>
-                                  {formatAmount(transaction.debitAmount)}
-                                </Td>
-                                <Td py={3.5} isNumeric color={transaction.creditAmount ? "green.600" : "gray.400"} fontWeight={transaction.creditAmount ? "semibold" : "normal"}>
-                                  {formatAmount(transaction.creditAmount)}
-                                </Td>
-                                <Td py={3.5} isNumeric color="gray.900" fontWeight="semibold">{formatAmount(transaction.balance)}</Td>
-                                <Td py={3}>
-                                  <Box position="relative" pt={5}>
-                                    {!transaction.category && (
-                                      <HStack 
-                                        position="absolute" 
-                                        top="0" 
-                                        left="0" 
-                                        color="orange.600" 
-                                        fontSize="xs" 
-                                        fontWeight="medium"
-                                        spacing={1}
-                                        mb={1}
-                                      >
-                                        <Icon as={FiAlertCircle} />
-                                        <Text>Select a category</Text>
-                                      </HStack>
-                                    )}
-                                    <Select
-                                      size="sm"
-                                      value={transaction.category || ''}
-                                      onChange={(e) => handleCategoryChange(monthKey, index, e.target.value)}
-                                      placeholder="Select category"
-                                      bg="white"
-                                      borderColor={!transaction.category ? "orange.300" : "gray.200"}
-                                      _hover={{ borderColor: !transaction.category ? "orange.400" : "green.400" }}
-                                      _focus={{ 
-                                        borderColor: !transaction.category ? "orange.500" : "green.500",
-                                        boxShadow: `0 0 0 1px ${!transaction.category ? 'var(--chakra-colors-orange-500)' : 'var(--chakra-colors-green-500)'}` 
-                                      }}
-                                      width="100%"
-                                    >
-                                      {categories
-                                        .filter(category => 
-                                          transaction.creditAmount 
-                                            ? category.type === 'INCOME'
-                                            : category.type === 'EXPENSE'
-                                        )
-                                        .map((category) => (
-                                          <option key={category.id} value={category.id}>
-                                            {category.name}
-                                          </option>
-                                        ))}
-                                    </Select>
-                                  </Box>
-                                </Td>
-                              </Tr>
-                            );
-                          })}
-                        </Tbody>
-                      </Table>
-                    </Box>
-                  </AccordionPanel>
-                </Box>
-              </AccordionItem>
+                monthKey={monthKey}
+                transactions={transactions}
+                categories={categories}
+                onCategoryChange={handleCategoryChange}
+                onNameChange={handleNameChange}
+                onReferenceChange={handleReferenceChange}
+              />
             ))}
           </Accordion>
         </VStack>

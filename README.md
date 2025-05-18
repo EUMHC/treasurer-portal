@@ -41,3 +41,4 @@ All data is stored in the browser's localStorage:
 - Transactions
 - Categories
 - Category assignments
+- Budgeted Values
